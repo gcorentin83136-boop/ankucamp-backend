@@ -11,6 +11,7 @@ import productsRoutes from "./core/api/products/products.routes";
 import ordersRoutes from "./core/api/orders/orders.routes";
 import messagesRoutes from "./core/api/messages/messages.routes";
 import notificationsRoutes from "./core/api/notifications/notifications.routes";
+import uploadsRoutes from "./core/api/uploads/uploads.routes";
 
 import { errorHandler } from "./core/errors/errorHandler";
 import { globalLimiter } from "./config/security";
@@ -46,7 +47,6 @@ app.use(globalLimiter);
 app.use(
   pinoHttp({
     logger,
-    // En dev, on ne log que les erreurs 4xx/5xx et les requêtes lentes
     autoLogging:
       env.NODE_ENV === "development"
         ? { ignore: (req) => req.url === "/health" || req.url === "/" }
@@ -81,6 +81,7 @@ app.use("/products", productsRoutes);
 app.use("/orders", ordersRoutes);
 app.use("/messages", messagesRoutes);
 app.use("/notifications", notificationsRoutes);
+app.use("/uploads", uploadsRoutes);
 
 // ===============
 // 404
