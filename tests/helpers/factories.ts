@@ -1,6 +1,6 @@
 import bcrypt from "bcrypt";
 import { testDb } from "./testSetup";
-import { users, shops, products } from "../../src/core/db/schema";
+import { users, shops, products, orders, orderItems } from "../../src/core/db/schema";
 import { signToken } from "../../src/core/security/jwt";
 
 // ============================================================
@@ -118,4 +118,68 @@ export async function createProduct(options: CreateProductOptions) {
     .returning();
 
   return product;
+}
+// ============================================================
+// FACTORY ORDERS
+// ============================================================
+
+interface CreateOrderOptions {
+  buyer_id: number;
+  seller_id: number;
+  status?: string;
+  delivery_method?: string;
+  delivery_address?: string;
+  total_price?: number;
+}
+
+export async function createOrder(options: CreateOrderOptions) {
+  const {
+    buyer_id,
+    seller_id,
+    status = "pending",
+    delivery_method = "pickup",
+    delivery_address = null,
+    total_price = 0,
+  } = options;
+
+  const [order] = await testDb
+    .insert(orders)
+    .values({
+      buyer_id,
+      seller_id,
+      status,
+      delivery_method,
+      delivery_address,
+      total_price: String(total_price),
+    })
+    .returning();
+
+  return order;
+}
+
+// ============================================================
+// FACTORY ORDER ITEMS
+// ============================================================
+
+interface CreateOrderItemOptions {
+  order_id: number;
+  product_id: number;
+  quantity: number;
+  unit_price: number;
+}
+
+export async function createOrderItem(options: CreateOrderItemOptions) {
+  const { order_id, product_id, quantity, unit_price } = options;
+
+  const [item] = await testDb
+    .insert(orderItems)
+    .values({
+      order_id,
+      product_id,
+      quantity,
+      unit_price: String(unit_price),
+    })
+    .returning();
+
+  return item;
 }
