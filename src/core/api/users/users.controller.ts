@@ -9,7 +9,6 @@ export async function getMe(req: AuthRequest, res: Response) {
   }
 
   const user = await getUserById(req.user.id);
-
   if (!user) {
     throw new AppError("Utilisateur introuvable", 404);
   }
@@ -22,12 +21,36 @@ export async function updateMe(req: AuthRequest, res: Response) {
     throw new AppError("Non authentifié", 401);
   }
 
-  const { full_name, email } = req.body as {
-    full_name?: string;
+  const {
+    first_name,
+    last_name,
+    email,
+    address,
+    city,
+    postal_code,
+    country,
+    avatar_url,
+  } = req.body as {
+    first_name?: string;
+    last_name?: string;
     email?: string;
+    address?: string;
+    city?: string;
+    postal_code?: string;
+    country?: string;
+    avatar_url?: string;
   };
 
-  const updated = await updateUser(req.user.id, { full_name, email });
+  const updated = await updateUser(req.user.id, {
+    first_name,
+    last_name,
+    email,
+    address,
+    city,
+    postal_code,
+    country,
+    avatar_url,
+  });
 
   if (!updated) {
     throw new AppError("Utilisateur introuvable", 404);
@@ -47,7 +70,6 @@ export async function getOne(req: Request, res: Response) {
   }
 
   const user = await getUserById(id);
-
   if (!user) {
     throw new AppError("Utilisateur introuvable", 404);
   }

@@ -8,12 +8,28 @@ import type { RegisterInput, LoginInput } from "./auth.validation";
 
 const SALT_ROUNDS = 10;
 
-/**
- * Crée un nouvel utilisateur.
- */
-export async function registerUser(input: RegisterInput) {
-  const { full_name, email, password, role } = input;
+// Colonnes publiques (jamais de password_hash)
+const publicColumns = {
+  id: users.id,
+  first_name: users.first_name,
+  last_name: users.last_name,
+  email: users.email,
+  birth_year: users.birth_year,
+  address: users.address,
+  city: users.city,
+  postal_code: users.postal_code,
+  country: users.country,
+  provider: users.provider,
+  avatar_url: users.avatar_url,
+  role: users.role,
+  email_verified: users.email_verified,
+  created_at: users.created_at,
+};
 
+export async function registerUser(input: RegisterInput) {
+  const { email, password } = input;
+
+  // Vérifier email unique
   const existing = await db
     .select({ id: users.id })
     .from(users)
@@ -24,30 +40,24 @@ export async function registerUser(input: RegisterInput) {
     throw new AppError("Cet email est déjà utilisé", 400);
   }
 
+  // Hash du mot de passe
   const password_hash = await bcrypt.hash(password, SALT_ROUNDS);
+
+  // Insertion (on ignore password pour ne pas le stocker en clair)
+  const { password: _password, ...dataWithoutPassword } = input;
 
   const [created] = await db
     .insert(users)
     .values({
-      full_name,
-      email,
+      ...dataWithoutPassword,
       password_hash,
-      role,
+      provider: "local",
     })
-    .returning({
-      id: users.id,
-      full_name: users.full_name,
-      email: users.email,
-      role: users.role,
-      created_at: users.created_at,
-    });
+    .returning(publicColumns);
 
   return created;
 }
 
-/**
- * Authentifie un utilisateur.
- */
 export async function loginUser(input: LoginInput) {
   const { email, password } = input;
 
@@ -57,7 +67,7 @@ export async function loginUser(input: LoginInput) {
     .where(eq(users.email, email))
     .limit(1);
 
-  if (!user) {
+  if (!user || !user.password_hash) {
     throw new AppError("Email ou mot de passe incorrect", 401);
   }
 
@@ -75,9 +85,11 @@ export async function loginUser(input: LoginInput) {
   return {
     user: {
       id: user.id,
-      full_name: user.full_name,
+      first_name: user.first_name,
+      last_name: user.last_name,
       email: user.email,
       role: user.role,
+      avatar_url: user.avatar_url,
       created_at: user.created_at,
     },
     token,

@@ -13,10 +13,30 @@ import {
 // ========================
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
-  full_name: varchar("full_name", { length: 255 }).notNull(),
+
+  // Identité
+  first_name: varchar("first_name", { length: 100 }).notNull(),
+  last_name: varchar("last_name", { length: 100 }).notNull(),
   email: varchar("email", { length: 255 }).notNull().unique(),
-  password_hash: varchar("password_hash", { length: 255 }).notNull(),
+  birth_year: integer("birth_year"),
+
+  // Adresse postale
+  address: varchar("address", { length: 255 }),
+  city: varchar("city", { length: 100 }),
+  postal_code: varchar("postal_code", { length: 20 }),
+  country: varchar("country", { length: 100 }).default("France"),
+
+  // Auth locale (nullable pour les users OAuth)
+  password_hash: varchar("password_hash", { length: 255 }),
+
+  // OAuth
+  provider: varchar("provider", { length: 50 }).default("local").notNull(),
+  provider_id: varchar("provider_id", { length: 255 }),
+  avatar_url: text("avatar_url"),
+
+  // Méta
   role: varchar("role", { length: 50 }).notNull(),
+  email_verified: integer("email_verified").default(0).notNull(),
   created_at: timestamp("created_at").defaultNow(),
 });
 

@@ -8,18 +8,28 @@ import { signToken } from "../../src/core/security/jwt";
 // ============================================================
 
 interface CreateUserOptions {
-  full_name?: string;
+  first_name?: string;
+  last_name?: string;
   email: string;
   password?: string;
   role?: "particulier" | "professionnel";
+  birth_year?: number;
+  address?: string;
+  city?: string;
+  postal_code?: string;
 }
 
 export async function createUser(options: CreateUserOptions) {
   const {
-    full_name = "Test User",
+    first_name = "Test",
+    last_name = "User",
     email,
     password = "motdepasse123",
     role = "particulier",
+    birth_year = 1990,
+    address = "1 rue Test",
+    city = "Paris",
+    postal_code = "75001",
   } = options;
 
   const password_hash = await bcrypt.hash(password, 10);
@@ -27,14 +37,19 @@ export async function createUser(options: CreateUserOptions) {
   const [user] = await testDb
     .insert(users)
     .values({
-      full_name,
+      first_name,
+      last_name,
       email,
       password_hash,
       role,
+      birth_year,
+      address,
+      city,
+      postal_code,
+      provider: "local",
     })
     .returning();
 
-  // Générer un token prêt à l'emploi
   const token = signToken({
     id: user.id,
     email: user.email,
@@ -72,16 +87,12 @@ export async function createShop(options: CreateShopOptions) {
 
   const [shop] = await testDb
     .insert(shops)
-    .values({
-      owner_id,
-      name,
-      description,
-      city,
-    })
+    .values({ owner_id, name, description, city })
     .returning();
 
   return shop;
 }
+
 // ============================================================
 // FACTORY PRODUCTS
 // ============================================================
@@ -119,6 +130,7 @@ export async function createProduct(options: CreateProductOptions) {
 
   return product;
 }
+
 // ============================================================
 // FACTORY ORDERS
 // ============================================================
