@@ -1,19 +1,26 @@
 import { Request, Response, NextFunction } from "express";
 import { AppError } from "./AppError";
 import { env } from "../../config/env";
+import { logger } from "../../config/logger";
 
-/**
- * Middleware global de gestion d'erreurs.
- * À brancher EN DERNIER dans app.ts (après toutes les routes).
- */
 export function errorHandler(
   err: Error,
-  _req: Request,
+  req: Request,
   res: Response,
   _next: NextFunction
 ) {
   // Erreur applicative connue
   if (err instanceof AppError) {
+    logger.warn(
+      {
+        method: req.method,
+        url: req.originalUrl,
+        statusCode: err.statusCode,
+        message: err.message,
+      },
+      "AppError"
+    );
+
     return res.status(err.statusCode).json({
       success: false,
       message: err.message,
@@ -21,8 +28,9 @@ export function errorHandler(
     });
   }
 
-  // Erreur JSON malformée (body parser)
+  // Erreur JSON malformée
   if (err.name === "SyntaxError" && "body" in err) {
+    logger.warn({ url: req.originalUrl }, "JSON invalide");
     return res.status(400).json({
       success: false,
       message: "Corps de requête JSON invalide",
@@ -30,7 +38,14 @@ export function errorHandler(
   }
 
   // Erreur inconnue
-  console.error("❌ Erreur non gérée :", err);
+  logger.error(
+    {
+      err,
+      method: req.method,
+      url: req.originalUrl,
+    },
+    "❌ Erreur non gérée"
+  );
 
   return res.status(500).json({
     success: false,

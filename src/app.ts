@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
+import pinoHttp from "pino-http";
 
 import authRoutes from "./core/api/auth/auth.routes";
 import usersRoutes from "./core/api/users/users.routes";
@@ -14,6 +15,7 @@ import notificationsRoutes from "./core/api/notifications/notifications.routes";
 import { errorHandler } from "./core/errors/errorHandler";
 import { globalLimiter } from "./config/security";
 import { env } from "./config/env";
+import { logger } from "./config/logger";
 
 const app = express();
 
@@ -37,6 +39,20 @@ app.use(
 );
 
 app.use(globalLimiter);
+
+// ===============
+// LOGS HTTP
+// ===============
+app.use(
+  pinoHttp({
+    logger,
+    // En dev, on ne log que les erreurs 4xx/5xx et les requêtes lentes
+    autoLogging:
+      env.NODE_ENV === "development"
+        ? { ignore: (req) => req.url === "/health" || req.url === "/" }
+        : true,
+  })
+);
 
 // ===============
 // PARSERS

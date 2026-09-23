@@ -1,20 +1,21 @@
 import { env } from "./config/env";
+import { logger } from "./config/logger";
 import app from "./app";
 import { testConnection } from "./core/db";
 
 async function bootstrap() {
-  console.log("🚀 Démarrage du serveur ANKUCAMP...");
-  console.log(`   Environnement : ${env.NODE_ENV}`);
-  console.log(`   Port          : ${env.PORT}`);
+  logger.info("🚀 Démarrage du serveur ANKUCAMP...");
+  logger.info(`   Environnement : ${env.NODE_ENV}`);
+  logger.info(`   Port          : ${env.PORT}`);
 
   await testConnection();
 
   app.listen(env.PORT, () => {
-    console.log(`✅ API ANKUCAMP en écoute sur http://localhost:${env.PORT}`);
+    logger.info(`✅ API ANKUCAMP en écoute sur http://localhost:${env.PORT}`);
   });
 }
 
 bootstrap().catch((err) => {
-  console.error("❌ Erreur fatale au démarrage :", err);
+  logger.fatal({ err }, "❌ Erreur fatale au démarrage");
   process.exit(1);
 });
