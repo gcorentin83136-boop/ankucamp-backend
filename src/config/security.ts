@@ -1,12 +1,15 @@
 import rateLimit from "express-rate-limit";
+import { env } from "./env";
+
+const isTest = env.NODE_ENV === "test";
 
 /**
  * Rate limit global : 100 requêtes / 15 min par IP.
- * Protège contre le spam basique et les scrapers.
+ * Désactivé en mode test pour ne pas bloquer les suites de tests.
  */
 export const globalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100,
+  windowMs: 15 * 60 * 1000,
+  max: isTest ? 10_000 : 100,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
@@ -17,14 +20,14 @@ export const globalLimiter = rateLimit({
 
 /**
  * Rate limit strict pour l'auth : 5 tentatives ÉCHOUÉES / 15 min.
- * Empêche le brute-force de mot de passe.
+ * Désactivé en mode test pour ne pas bloquer les suites de tests.
  */
 export const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5,
+  max: isTest ? 10_000 : 5,
   standardHeaders: true,
   legacyHeaders: false,
-  skipSuccessfulRequests: true,
+  skipSuccessfulRequests: !isTest,
   message: {
     success: false,
     message: "Trop de tentatives de connexion, réessayez dans 15 minutes",

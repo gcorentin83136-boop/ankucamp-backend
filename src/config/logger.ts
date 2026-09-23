@@ -2,13 +2,16 @@ import pino from "pino";
 import { env } from "./env";
 
 /**
- * Logger Pino configuré selon l'environnement.
- * - dev  : affichage coloré et lisible via pino-pretty
- * - prod : JSON brut (compatible Datadog, CloudWatch, Logtail, etc.)
+ * En mode test, on n'affiche AUCUN log (pollue la sortie Vitest).
+ * En dev, pino-pretty pour un affichage coloré.
+ * En prod, JSON brut.
  */
+const isTest = env.NODE_ENV === "test";
+const isDev = env.NODE_ENV === "development";
+
 export const logger = pino({
-  level: env.NODE_ENV === "development" ? "debug" : "info",
-  ...(env.NODE_ENV === "development"
+  level: isTest ? "silent" : isDev ? "debug" : "info",
+  ...(isDev
     ? {
         transport: {
           target: "pino-pretty",

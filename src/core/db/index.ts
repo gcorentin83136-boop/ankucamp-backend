@@ -4,12 +4,18 @@ import { Pool } from "pg";
 import * as schema from "./schema";
 import { logger } from "../../config/logger";
 
-if (!process.env.DATABASE_URL) {
+// En mode test, on utilise une DB dédiée pour ne pas polluer la dev
+const databaseUrl =
+  process.env.NODE_ENV === "test"
+    ? process.env.DATABASE_URL_TEST ?? process.env.DATABASE_URL
+    : process.env.DATABASE_URL;
+
+if (!databaseUrl) {
   throw new Error("DATABASE_URL manquant dans .env");
 }
 
 export const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  connectionString: databaseUrl,
 });
 
 export const db = drizzle(pool, { schema });
