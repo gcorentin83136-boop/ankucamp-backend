@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import helmet from "helmet";
 
 import authRoutes from "./core/api/auth/auth.routes";
 import usersRoutes from "./core/api/users/users.routes";
@@ -11,14 +12,36 @@ import messagesRoutes from "./core/api/messages/messages.routes";
 import notificationsRoutes from "./core/api/notifications/notifications.routes";
 
 import { errorHandler } from "./core/errors/errorHandler";
+import { globalLimiter } from "./config/security";
+import { env } from "./config/env";
 
 const app = express();
 
 // ===============
-// MIDDLEWARES
+// SÉCURITÉ
 // ===============
-app.use(cors());
-app.use(express.json());
+app.use(helmet());
+
+app.use(
+  cors({
+    origin:
+      env.NODE_ENV === "development"
+        ? [
+            "http://localhost:3000",
+            "http://localhost:5173",
+            "http://127.0.0.1:3000",
+          ]
+        : ["https://ankucamp.com"],
+    credentials: true,
+  })
+);
+
+app.use(globalLimiter);
+
+// ===============
+// PARSERS
+// ===============
+app.use(express.json({ limit: "1mb" }));
 
 // ===============
 // ROUTE DE TEST
@@ -44,7 +67,7 @@ app.use("/messages", messagesRoutes);
 app.use("/notifications", notificationsRoutes);
 
 // ===============
-// 404 (route non trouvée)
+// 404
 // ===============
 app.use((_req, res) => {
   res.status(404).json({
@@ -54,7 +77,7 @@ app.use((_req, res) => {
 });
 
 // ===============
-// ERROR HANDLER (EN DERNIER, TOUJOURS)
+// ERROR HANDLER
 // ===============
 app.use(errorHandler);
 
