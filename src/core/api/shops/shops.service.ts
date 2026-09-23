@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { db } from "../../db";
 import { shops } from "../../db/schema";
+import { AppError } from "../../errors/AppError";
 import type { CreateShopInput, UpdateShopInput } from "./shops.validation";
 
 export async function getAllShops() {
@@ -40,10 +41,6 @@ export async function createShop(ownerId: number, input: CreateShopInput) {
   return created;
 }
 
-/**
- * Met à jour une boutique. Vérifie que l'appelant est bien le propriétaire.
- * @throws Error si la boutique n'existe pas ou si l'appelant n'est pas le propriétaire.
- */
 export async function updateShop(
   shopId: number,
   userId: number,
@@ -52,11 +49,11 @@ export async function updateShop(
   const shop = await getShopById(shopId);
 
   if (!shop) {
-    throw new Error("Boutique introuvable");
+    throw new AppError("Boutique introuvable", 404);
   }
 
   if (shop.owner_id !== userId) {
-    throw new Error("Vous n'êtes pas le propriétaire de cette boutique");
+    throw new AppError("Vous n'êtes pas le propriétaire de cette boutique", 403);
   }
 
   const [updated] = await db
@@ -68,18 +65,15 @@ export async function updateShop(
   return updated;
 }
 
-/**
- * Supprime une boutique. Vérifie la propriété.
- */
 export async function deleteShop(shopId: number, userId: number) {
   const shop = await getShopById(shopId);
 
   if (!shop) {
-    throw new Error("Boutique introuvable");
+    throw new AppError("Boutique introuvable", 404);
   }
 
   if (shop.owner_id !== userId) {
-    throw new Error("Vous n'êtes pas le propriétaire de cette boutique");
+    throw new AppError("Vous n'êtes pas le propriétaire de cette boutique", 403);
   }
 
   await db.delete(shops).where(eq(shops.id, shopId));

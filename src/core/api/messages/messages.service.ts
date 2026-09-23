@@ -1,26 +1,20 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "../../db";
 import { messages } from "../../db/schema";
+import { AppError } from "../../errors/AppError";
 
 // ============================================================
 // PUBLIC
 // ============================================================
 
 export async function getPublicMessages() {
-  return db
-    .select()
-    .from(messages)
-    .where(eq(messages.type, "public"));
+  return db.select().from(messages).where(eq(messages.type, "public"));
 }
 
 export async function createPublicMessage(senderId: number, content: string) {
   const [created] = await db
     .insert(messages)
-    .values({
-      sender_id: senderId,
-      type: "public",
-      content,
-    })
+    .values({ sender_id: senderId, type: "public", content })
     .returning();
 
   return created;
@@ -56,7 +50,7 @@ export async function createGroupMessage(
 }
 
 // ============================================================
-// SUPPORT (client ↔ vendeur)
+// SUPPORT
 // ============================================================
 
 export async function getSupportMessagesByUser(userId: number) {
@@ -70,7 +64,9 @@ export async function getSupportMessagesByShop(shopId: number) {
   return db
     .select()
     .from(messages)
-    .where(and(eq(messages.type, "support"), eq(messages.receiver_id, shopId)));
+    .where(
+      and(eq(messages.type, "support"), eq(messages.receiver_id, shopId))
+    );
 }
 
 export async function createSupportMessage(
@@ -102,5 +98,9 @@ export async function getMessageById(id: number) {
     .where(eq(messages.id, id))
     .limit(1);
 
-  return message ?? null;
+  if (!message) {
+    throw new AppError("Message introuvable", 404);
+  }
+
+  return message;
 }

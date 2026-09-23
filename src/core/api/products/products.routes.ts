@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { authMiddleware } from "../../middlewares/auth.middleware";
 import { requireRole } from "../../middlewares/role.middleware";
+import { asyncHandler } from "../../errors/asyncHandler";
 import {
   listProducts,
   listByShop,
@@ -12,21 +13,18 @@ import {
 
 const router = Router();
 
-// Routes spécifiques AVANT les routes paramétrées
-router.get("/", listProducts);
-router.get("/shop/:shopId", listByShop);
+router.get("/", asyncHandler(listProducts));
+router.get("/shop/:shopId", asyncHandler(listByShop));
 
-// Création : réservée aux pros (vérif d'ownership faite dans le service)
 router.post(
   "/",
   authMiddleware,
   requireRole("professionnel"),
-  createOne
+  asyncHandler(createOne)
 );
 
-// Routes paramétrées EN DERNIER
-router.get("/:id", getOne);
-router.put("/:id", authMiddleware, updateOne);
-router.delete("/:id", authMiddleware, deleteOne);
+router.get("/:id", asyncHandler(getOne));
+router.put("/:id", authMiddleware, asyncHandler(updateOne));
+router.delete("/:id", authMiddleware, asyncHandler(deleteOne));
 
 export default router;

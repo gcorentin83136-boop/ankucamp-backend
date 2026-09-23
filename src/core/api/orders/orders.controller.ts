@@ -1,5 +1,6 @@
 import { Response } from "express";
 import { AuthRequest } from "../../middlewares/auth.middleware";
+import { AppError } from "../../errors/AppError";
 import { createOrderSchema, updateStatusSchema } from "./orders.validation";
 import {
   getOrdersByBuyer,
@@ -11,90 +12,67 @@ import {
 } from "./orders.service";
 
 export async function listMyOrders(req: AuthRequest, res: Response) {
-  if (!req.user) return res.status(401).json({ success: false, message: "Non authentifié" });
+  if (!req.user) throw new AppError("Non authentifié", 401);
   const list = await getOrdersByBuyer(req.user.id);
   return res.json({ success: true, orders: list });
 }
 
 export async function listSellerOrders(req: AuthRequest, res: Response) {
-  if (!req.user) return res.status(401).json({ success: false, message: "Non authentifié" });
+  if (!req.user) throw new AppError("Non authentifié", 401);
   const list = await getOrdersBySeller(req.user.id);
   return res.json({ success: true, orders: list });
 }
 
 export async function getOne(req: AuthRequest, res: Response) {
-  if (!req.user) return res.status(401).json({ success: false, message: "Non authentifié" });
+  if (!req.user) throw new AppError("Non authentifié", 401);
+
   const id = Number(req.params.id);
-  if (isNaN(id)) return res.status(400).json({ success: false, message: "ID invalide" });
+  if (isNaN(id)) throw new AppError("ID invalide", 400);
 
   const order = await getOrderById(id);
-  if (!order) return res.status(404).json({ success: false, message: "Commande introuvable" });
+  if (!order) throw new AppError("Commande introuvable", 404);
 
   if (order.buyer_id !== req.user.id && order.seller_id !== req.user.id) {
-    return res.status(403).json({ success: false, message: "Accès interdit" });
+    throw new AppError("Accès interdit", 403);
   }
 
   return res.json({ success: true, order });
 }
 
 export async function createOne(req: AuthRequest, res: Response) {
-  if (!req.user) return res.status(401).json({ success: false, message: "Non authentifié" });
+  if (!req.user) throw new AppError("Non authentifié", 401);
 
   const parsed = createOrderSchema.safeParse(req.body);
   if (!parsed.success) {
-    return res.status(400).json({
-      success: false,
-      message: "Données invalides",
-      errors: parsed.error.flatten().fieldErrors,
-    });
+    throw new AppError("Données invalides", 400, parsed.error.flatten().fieldErrors);
   }
 
-  try {
-    const order = await createOrder(req.user.id, parsed.data);
-    return res.status(201).json({ success: true, message: "Commande créée", order });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Erreur serveur";
-    return res.status(400).json({ success: false, message });
-  }
+  const order = await createOrder(req.user.id, parsed.data);
+
+  return res.status(201).json({ success: true, message: "Commande créée", order });
 }
 
 export async function updateStatus(req: AuthRequest, res: Response) {
-  if (!req.user) return res.status(401).json({ success: false, message: "Non authentifié" });
+  if (!req.user) throw new AppError("Non authentifié", 401);
 
   const id = Number(req.params.id);
-  if (isNaN(id)) return res.status(400).json({ success: false, message: "ID invalide" });
+  if (isNaN(id)) throw new AppError("ID invalide", 400);
 
   const parsed = updateStatusSchema.safeParse(req.body);
   if (!parsed.success) {
-    return res.status(400).json({
-      success: false,
-      message: "Données invalides",
-      errors: parsed.error.flatten().fieldErrors,
-    });
+    throw new AppError("Données invalides", 400, parsed.error.flatten().fieldErrors);
   }
 
-  try {
-    const order = await updateOrderStatus(id, req.user.id, parsed.data.status);
-    return res.json({ success: true, message: "Statut mis à jour", order });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Erreur serveur";
-    const status = message.includes("accès") || message.includes("Seul") ? 403 : 400;
-    return res.status(status).json({ success: false, message });
-  }
+  const order = await updateOrderStatus(id, req.user.id, parsed.data.status);
+  return res.json({ success: true, message: "Statut mis à jour", order });
 }
 
 export async function deleteOne(req: AuthRequest, res: Response) {
-  if (!req.user) return res.status(401).json({ success: false, message: "Non authentifié" });
+  if (!req.user) throw new AppError("Non authentifié", 401);
 
   const id = Number(req.params.id);
-  if (isNaN(id)) return res.status(400).json({ success: false, message: "ID invalide" });
+  if (isNaN(id)) throw new AppError("ID invalide", 400);
 
-  try {
-    await deleteOrder(id, req.user.id);
-    return res.status(204).send();
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Erreur serveur";
-    const status = message.includes("Seul") ? 403 : 400;
-    return res.status(status).json({ success: false, message });
-  }
+  await deleteOrder(id, req.user.id);
+  return res.status(204).send();
 }

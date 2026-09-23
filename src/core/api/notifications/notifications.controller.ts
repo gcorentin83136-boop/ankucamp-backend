@@ -1,5 +1,6 @@
 import { Response } from "express";
 import { AuthRequest } from "../../middlewares/auth.middleware";
+import { AppError } from "../../errors/AppError";
 import {
   getNotificationsForUser,
   markNotificationAsRead,
@@ -8,29 +9,27 @@ import {
 } from "./notifications.service";
 
 export async function listMine(req: AuthRequest, res: Response) {
-  if (!req.user) return res.status(401).json({ success: false, message: "Non authentifié" });
-
+  if (!req.user) throw new AppError("Non authentifié", 401);
   const list = await getNotificationsForUser(req.user.id);
   return res.json({ success: true, notifications: list });
 }
 
 export async function markRead(req: AuthRequest, res: Response) {
-  if (!req.user) return res.status(401).json({ success: false, message: "Non authentifié" });
+  if (!req.user) throw new AppError("Non authentifié", 401);
 
   const id = Number(req.params.id);
-  if (isNaN(id)) return res.status(400).json({ success: false, message: "ID invalide" });
+  if (isNaN(id)) throw new AppError("ID invalide", 400);
 
-  try {
-    const notif = await markNotificationAsRead(id, req.user.id);
-    return res.json({ success: true, message: "Notification marquée comme lue", notification: notif });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Erreur serveur";
-    return res.status(404).json({ success: false, message });
-  }
+  const notif = await markNotificationAsRead(id, req.user.id);
+  return res.json({
+    success: true,
+    message: "Notification marquée comme lue",
+    notification: notif,
+  });
 }
 
 export async function markAllRead(req: AuthRequest, res: Response) {
-  if (!req.user) return res.status(401).json({ success: false, message: "Non authentifié" });
+  if (!req.user) throw new AppError("Non authentifié", 401);
 
   const updated = await markAllNotificationsAsRead(req.user.id);
   return res.json({
@@ -41,16 +40,11 @@ export async function markAllRead(req: AuthRequest, res: Response) {
 }
 
 export async function deleteOne(req: AuthRequest, res: Response) {
-  if (!req.user) return res.status(401).json({ success: false, message: "Non authentifié" });
+  if (!req.user) throw new AppError("Non authentifié", 401);
 
   const id = Number(req.params.id);
-  if (isNaN(id)) return res.status(400).json({ success: false, message: "ID invalide" });
+  if (isNaN(id)) throw new AppError("ID invalide", 400);
 
-  try {
-    await deleteNotification(id, req.user.id);
-    return res.status(204).send();
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Erreur serveur";
-    return res.status(404).json({ success: false, message });
-  }
+  await deleteNotification(id, req.user.id);
+  return res.status(204).send();
 }

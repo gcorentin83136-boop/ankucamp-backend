@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { db } from "../../db";
 import { products, shops } from "../../db/schema";
+import { AppError } from "../../errors/AppError";
 import type {
   CreateProductInput,
   UpdateProductInput,
@@ -10,10 +11,6 @@ import type {
 // HELPERS
 // ============================================================
 
-/**
- * Vérifie que l'utilisateur est bien le propriétaire de la boutique.
- * @throws Error si la boutique n'existe pas ou si ce n'est pas le propriétaire.
- */
 async function assertShopOwner(shopId: number, userId: number) {
   const [shop] = await db
     .select()
@@ -22,20 +19,16 @@ async function assertShopOwner(shopId: number, userId: number) {
     .limit(1);
 
   if (!shop) {
-    throw new Error("Boutique introuvable");
+    throw new AppError("Boutique introuvable", 404);
   }
 
   if (shop.owner_id !== userId) {
-    throw new Error("Vous n'êtes pas le propriétaire de cette boutique");
+    throw new AppError("Vous n'êtes pas le propriétaire de cette boutique", 403);
   }
 
   return shop;
 }
 
-/**
- * Vérifie que l'utilisateur est propriétaire de la boutique parente du produit.
- * @throws Error si le produit n'existe pas ou si l'utilisateur n'est pas le propriétaire.
- */
 async function assertProductOwnership(productId: number, userId: number) {
   const [product] = await db
     .select()
@@ -44,7 +37,7 @@ async function assertProductOwnership(productId: number, userId: number) {
     .limit(1);
 
   if (!product) {
-    throw new Error("Produit introuvable");
+    throw new AppError("Produit introuvable", 404);
   }
 
   await assertShopOwner(product.shop_id, userId);
@@ -78,10 +71,8 @@ export async function createProduct(
   userId: number,
   input: CreateProductInput
 ) {
-  // 1. Vérifier que l'utilisateur possède bien la boutique cible
   await assertShopOwner(input.shop_id, userId);
 
-  // 2. Insérer (attention : decimal attend une STRING côté Drizzle)
   const [created] = await db
     .insert(products)
     .values({
@@ -105,7 +96,6 @@ export async function updateProduct(
 ) {
   await assertProductOwnership(productId, userId);
 
-  // Convertir price en string si présent
   const dataToUpdate: Record<string, unknown> = { ...input };
   if (typeof input.price === "number") {
     dataToUpdate.price = String(input.price);

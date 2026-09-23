@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { authMiddleware } from "../../middlewares/auth.middleware";
+import { asyncHandler } from "../../errors/asyncHandler";
 import {
   listPublic,
   createPublic,
@@ -13,20 +14,16 @@ import {
 
 const router = Router();
 
-// PUBLIC
-router.get("/public", listPublic);
-router.post("/public", authMiddleware, createPublic);
+router.get("/public", asyncHandler(listPublic));
+router.post("/public", authMiddleware, asyncHandler(createPublic));
 
-// GROUP
-router.get("/group/:groupId", authMiddleware, listGroup);
-router.post("/group", authMiddleware, createGroup);
+router.get("/group/:groupId", authMiddleware, asyncHandler(listGroup));
+router.post("/group", authMiddleware, asyncHandler(createGroup));
 
-// SUPPORT
-router.get("/support/me", authMiddleware, listSupportMine);
-router.get("/support/shop/:shopId", authMiddleware, listSupportByShop);
-router.post("/support", authMiddleware, createSupport);
+router.get("/support/me", authMiddleware, asyncHandler(listSupportMine));
+router.get("/support/shop/:shopId", authMiddleware, asyncHandler(listSupportByShop));
+router.post("/support", authMiddleware, asyncHandler(createSupport));
 
-// PAR ID — EN DERNIER
-router.get("/:id", authMiddleware, getOne);
+router.get("/:id", authMiddleware, asyncHandler(getOne));
 
 export default router;

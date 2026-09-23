@@ -3,10 +3,14 @@ import { eq } from "drizzle-orm";
 import { db } from "../../db";
 import { users } from "../../db/schema";
 import { signToken } from "../../security/jwt";
+import { AppError } from "../../errors/AppError";
 import type { RegisterInput, LoginInput } from "./auth.validation";
 
 const SALT_ROUNDS = 10;
 
+/**
+ * Crée un nouvel utilisateur.
+ */
 export async function registerUser(input: RegisterInput) {
   const { full_name, email, password, role } = input;
 
@@ -17,7 +21,7 @@ export async function registerUser(input: RegisterInput) {
     .limit(1);
 
   if (existing.length > 0) {
-    throw new Error("Cet email est déjà utilisé");
+    throw new AppError("Cet email est déjà utilisé", 400);
   }
 
   const password_hash = await bcrypt.hash(password, SALT_ROUNDS);
@@ -41,6 +45,9 @@ export async function registerUser(input: RegisterInput) {
   return created;
 }
 
+/**
+ * Authentifie un utilisateur.
+ */
 export async function loginUser(input: LoginInput) {
   const { email, password } = input;
 
@@ -51,12 +58,12 @@ export async function loginUser(input: LoginInput) {
     .limit(1);
 
   if (!user) {
-    throw new Error("Email ou mot de passe incorrect");
+    throw new AppError("Email ou mot de passe incorrect", 401);
   }
 
   const valid = await bcrypt.compare(password, user.password_hash);
   if (!valid) {
-    throw new Error("Email ou mot de passe incorrect");
+    throw new AppError("Email ou mot de passe incorrect", 401);
   }
 
   const token = signToken({

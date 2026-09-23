@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { authMiddleware } from "../../middlewares/auth.middleware";
+import { asyncHandler } from "../../errors/asyncHandler";
 import {
   listMine,
   markRead,
@@ -9,15 +10,12 @@ import {
 
 const router = Router();
 
-// Toutes protégées
 router.use(authMiddleware);
 
-// Routes spécifiques AVANT les routes paramétrées
-router.get("/me", listMine);
-router.put("/read-all", markAllRead);
+router.get("/me", asyncHandler(listMine));
+router.put("/read-all", asyncHandler(markAllRead));
 
-// Routes paramétrées EN DERNIER
-router.put("/:id/read", markRead);
-router.delete("/:id", deleteOne);
+router.put("/:id/read", asyncHandler(markRead));
+router.delete("/:id", asyncHandler(deleteOne));
 
 export default router;

@@ -1,11 +1,13 @@
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { db } from "../../db";
 import { orders, orderItems, products } from "../../db/schema";
+import { AppError } from "../../errors/AppError";
 import type { CreateOrderInput } from "./orders.validation";
 
-/**
- * Récupère les commandes d'un acheteur, avec leurs items joints.
- */
+// ============================================================
+// LECTURE
+// ============================================================
+
 export async function getOrdersByBuyer(buyerId: number) {
   const buyerOrders = await db
     .select()
@@ -27,9 +29,6 @@ export async function getOrdersByBuyer(buyerId: number) {
   }));
 }
 
-/**
- * Récupère les commandes reçues par un vendeur.
- */
 export async function getOrdersBySeller(sellerId: number) {
   const sellerOrders = await db
     .select()
@@ -51,9 +50,6 @@ export async function getOrdersBySeller(sellerId: number) {
   }));
 }
 
-/**
- * Récupère une commande par ID (avec items).
- */
 export async function getOrderById(id: number) {
   const [order] = await db
     .select()
@@ -71,46 +67,30 @@ export async function getOrderById(id: number) {
   return { ...order, items };
 }
 
-/**
- * Crée une commande complète :
- * 1. Vérifie que tous les produits existent et appartiennent au vendeur.
- * 2. Vérifie le stock.
- * 3. Calcule le total (prix unitaire × quantité).
- * 4. Insère la commande + les items dans une transaction.
- * 5. Décrémente le stock.
- */
+// ============================================================
+// CRÉATION
+// ============================================================
+
 export async function createOrder(buyerId: number, input: CreateOrderInput) {
   const { seller_id, delivery_method, delivery_address, items } = input;
 
   if (buyerId === seller_id) {
-    throw new Error("Vous ne pouvez pas commander chez vous-même");
+    throw new AppError("Vous ne pouvez pas commander chez vous-même", 400);
   }
 
   const productIds = items.map((i) => i.product_id);
 
-  // 1. Charger tous les produits en une seule requête
   const productsFound = await db
     .select()
     .from(products)
     .where(inArray(products.id, productIds));
 
-  // Vérifier que tous les produits existent
   if (productsFound.length !== productIds.length) {
-    throw new Error("Un ou plusieurs produits sont introuvables");
+    throw new AppError("Un ou plusieurs produits sont introuvables", 404);
   }
 
-  // Vérifier que chaque produit appartient bien au vendeur
-  const wrongSeller = productsFound.find((p) => p.shop_id === undefined);
-  // (Note : on vérifie plus bas que le produit appartient à une boutique du vendeur,
-  //  mais on n'a pas encore relié shop → seller dans cette version. Pour simplifier,
-  //  on considère ici que le vendeur est passé en paramètre et on fait confiance
-  //  à la création de la commande. Une amélioration future : joindre shops.owner_id.)
-  void wrongSeller;
-
-  // 2. Vérifier le stock et calculer le total
   let totalPrice = 0;
   const itemsToInsert: Array<{
-    order_id?: number;
     product_id: number;
     quantity: number;
     unit_price: string;
@@ -120,8 +100,9 @@ export async function createOrder(buyerId: number, input: CreateOrderInput) {
     const product = productsFound.find((p) => p.id === item.product_id)!;
 
     if (product.stock !== null && product.stock < item.quantity) {
-      throw new Error(
-        `Stock insuffisant pour "${product.name}" (disponible : ${product.stock})`
+      throw new AppError(
+        `Stock insuffisant pour "${product.name}" (disponible : ${product.stock})`,
+        400
       );
     }
 
@@ -135,7 +116,6 @@ export async function createOrder(buyerId: number, input: CreateOrderInput) {
     });
   }
 
-  // 3. Transaction : insertion commande + items + décrément stock
   const result = await db.transaction(async (tx) => {
     const [order] = await tx
       .insert(orders)
@@ -149,14 +129,10 @@ export async function createOrder(buyerId: number, input: CreateOrderInput) {
       })
       .returning();
 
-    const itemsWithOrderId = itemsToInsert.map((i) => ({
-      ...i,
-      order_id: order.id,
-    }));
+    await tx.insert(orderItems).values(
+      itemsToInsert.map((i) => ({ ...i, order_id: order.id }))
+    );
 
-    await tx.insert(orderItems).values(itemsWithOrderId);
-
-    // Décrémenter le stock
     for (const item of items) {
       const product = productsFound.find((p) => p.id === item.product_id)!;
       if (product.stock !== null) {
@@ -173,37 +149,43 @@ export async function createOrder(buyerId: number, input: CreateOrderInput) {
   return getOrderById(result.id);
 }
 
-/**
- * Change le statut d'une commande.
- * Seul le vendeur peut changer le statut (sauf pour "cancelled" qui peut être fait par le buyer).
- */
+// ============================================================
+// STATUT
+// ============================================================
+
 export async function updateOrderStatus(
   orderId: number,
   userId: number,
   newStatus: string
 ) {
   const order = await getOrderById(orderId);
-  if (!order) throw new Error("Commande introuvable");
+  if (!order) {
+    throw new AppError("Commande introuvable", 404);
+  }
 
   const isSeller = order.seller_id === userId;
   const isBuyer = order.buyer_id === userId;
 
   if (!isSeller && !isBuyer) {
-    throw new Error("Vous n'avez pas accès à cette commande");
+    throw new AppError("Vous n'avez pas accès à cette commande", 403);
   }
 
-  // Seul le buyer peut annuler, et uniquement si la commande est encore pending
   if (newStatus === "cancelled") {
     if (!isBuyer) {
-      throw new Error("Seul l'acheteur peut annuler une commande");
+      throw new AppError("Seul l'acheteur peut annuler une commande", 403);
     }
     if (order.status !== "pending") {
-      throw new Error("Impossible d'annuler : la commande n'est plus en attente");
+      throw new AppError(
+        "Impossible d'annuler : la commande n'est plus en attente",
+        400
+      );
     }
   } else {
-    // Autres changements de statut = vendeur uniquement
     if (!isSeller) {
-      throw new Error("Seul le vendeur peut modifier le statut de la commande");
+      throw new AppError(
+        "Seul le vendeur peut modifier le statut de la commande",
+        403
+      );
     }
   }
 
@@ -216,22 +198,27 @@ export async function updateOrderStatus(
   return updated;
 }
 
-/**
- * Supprime une commande (buyer, si pending).
- */
+// ============================================================
+// SUPPRESSION
+// ============================================================
+
 export async function deleteOrder(orderId: number, userId: number) {
   const order = await getOrderById(orderId);
-  if (!order) throw new Error("Commande introuvable");
+  if (!order) {
+    throw new AppError("Commande introuvable", 404);
+  }
 
   if (order.buyer_id !== userId) {
-    throw new Error("Seul l'acheteur peut supprimer cette commande");
+    throw new AppError("Seul l'acheteur peut supprimer cette commande", 403);
   }
 
   if (order.status !== "pending") {
-    throw new Error("Impossible de supprimer : la commande n'est plus en attente");
+    throw new AppError(
+      "Impossible de supprimer : la commande n'est plus en attente",
+      400
+    );
   }
 
-  // Supprimer les items puis la commande
   await db.delete(orderItems).where(eq(orderItems.order_id, orderId));
   await db.delete(orders).where(eq(orders.id, orderId));
 }
