@@ -1,6 +1,6 @@
 import bcrypt from "bcrypt";
 import { testDb } from "./testSetup";
-import { users, shops } from "../../src/core/db/schema";
+import { users, shops, products } from "../../src/core/db/schema";
 import { signToken } from "../../src/core/security/jwt";
 
 // ============================================================
@@ -81,4 +81,41 @@ export async function createShop(options: CreateShopOptions) {
     .returning();
 
   return shop;
+}
+// ============================================================
+// FACTORY PRODUCTS
+// ============================================================
+
+interface CreateProductOptions {
+  shop_id: number;
+  name?: string;
+  description?: string;
+  price?: number;
+  stock?: number;
+  location?: string;
+}
+
+export async function createProduct(options: CreateProductOptions) {
+  const {
+    shop_id,
+    name = "Test Product",
+    description = "Un produit de test",
+    price = 19.99,
+    stock = 10,
+    location = "Paris",
+  } = options;
+
+  const [product] = await testDb
+    .insert(products)
+    .values({
+      shop_id,
+      name,
+      description,
+      price: String(price),
+      stock,
+      location,
+    })
+    .returning();
+
+  return product;
 }
