@@ -44,6 +44,12 @@ jobs:
       - name: Push DB schema
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/ankucamp_test
+          CLOUDINARY_CLOUD_NAME: ${{ secrets.CLOUDINARY_CLOUD_NAME }}
+          CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
+          CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_CALLBACK_URL: http://localhost:3001/auth/google/callback
         run: npx drizzle-kit push --force
 
       - name: Run tests
@@ -53,4 +59,10 @@ jobs:
           DATABASE_URL_TEST: postgres://postgres:postgres@localhost:5432/ankucamp_test
           JWT_SECRET: test-secret-for-ci-only-at-least-16-chars
           PORT: 3001
+          CLOUDINARY_CLOUD_NAME: ${{ secrets.CLOUDINARY_CLOUD_NAME }}
+          CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
+          CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_CALLBACK_URL: http://localhost:3001/auth/google/callback
         run: npm test
