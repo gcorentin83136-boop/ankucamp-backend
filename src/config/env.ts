@@ -17,6 +17,10 @@ const envSchema = z.object({
   GOOGLE_CLIENT_ID: z.string().min(1),
   GOOGLE_CLIENT_SECRET: z.string().min(1),
   GOOGLE_CALLBACK_URL: z.string().url(),
+
+  // Stripe
+  STRIPE_SECRET_KEY: z.string().startsWith("sk_test_").or(z.string().startsWith("sk_live_")),
+  STRIPE_WEBHOOK_SECRET: z.string().startsWith("whsec_"),
 });
 
 const parsed = envSchema.safeParse(process.env);
