@@ -1,8 +1,8 @@
 import { Request, Response, NextFunction } from "express";
-import { verifyToken, TokenPayload } from "../security/jwt";
+import { verifyToken } from "../security/jwt";
 
 export interface AuthRequest extends Request {
-  user?: TokenPayload;
+  user?: Express.User;
 }
 
 export function authMiddleware(

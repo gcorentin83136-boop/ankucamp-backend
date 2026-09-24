@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import pinoHttp from "pino-http";
+import session from "express-session";
 
 import authRoutes from "./core/api/auth/auth.routes";
 import usersRoutes from "./core/api/users/users.routes";
@@ -17,6 +18,7 @@ import { errorHandler } from "./core/errors/errorHandler";
 import { globalLimiter } from "./config/security";
 import { env } from "./config/env";
 import { logger } from "./config/logger";
+import { passport } from "./config/passport";
 
 const app = express();
 
@@ -58,6 +60,20 @@ app.use(
 // PARSERS
 // ===============
 app.use(express.json({ limit: "1mb" }));
+
+// ===============
+// PASSPORT (OAuth)
+// ===============
+app.use(
+  session({
+    secret: env.JWT_SECRET,
+    resave: false,
+    saveUninitialized: false,
+    cookie: { secure: false },
+  })
+);
+app.use(passport.initialize());
+app.use(passport.session());
 
 // ===============
 // ROUTE DE TEST
