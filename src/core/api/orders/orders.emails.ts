@@ -5,9 +5,41 @@ import { sendEmail } from "../../emails/email.service";
 import { orderConfirmationTemplate } from "../../emails/templates/orderConfirmation";
 import { generateInvoicePdf, generateInvoiceNumber } from "../../emails/invoice";
 import { env } from "../../../config/env";
+import { cloudinary } from "../../../config/cloudinary";
+
+// ============================================================
+// UPLOAD CLOUDINARY
+// ============================================================
+
+function uploadPdfToCloudinary(
+  buffer: Buffer,
+  publicId: string
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        resource_type: "raw", // ← IMPORTANT pour PDF
+        folder: "anku/invoices",
+        public_id: publicId,
+        format: "pdf",
+      },
+      (err, result) => {
+        if (err) return reject(err);
+        if (!result) return reject(new Error("Cloudinary: résultat vide"));
+        resolve(result.secure_url);
+      }
+    );
+    stream.end(buffer);
+  });
+}
+
+// ============================================================
+// ENVOI EMAIL + FACTURE
+// ============================================================
 
 /**
  * Envoie l'email de confirmation de commande avec la facture PDF en pièce jointe.
+ * Upload aussi la facture sur Cloudinary et stocke l'URL dans payments.invoice_url.
  * Appelé après un paiement Stripe réussi (webhook).
  */
 export async function sendOrderConfirmationEmail(orderId: number): Promise<void> {
@@ -55,6 +87,7 @@ export async function sendOrderConfirmationEmail(orderId: number): Promise<void>
     .where(eq(payments.order_id, orderId))
     .limit(1);
 
+  // 1. Génération du PDF en mémoire
   const invoiceNumber = generateInvoiceNumber(orderId);
   const pdfBuffer = await generateInvoicePdf({
     invoiceNumber,
@@ -78,6 +111,25 @@ export async function sendOrderConfirmationEmail(orderId: number): Promise<void>
     platformFeePercent: env.PLATFORM_FEE_PERCENT,
   });
 
+  // 2. Upload Cloudinary (n'échoue pas l'envoi email si erreur)
+  try {
+    const invoiceUrl = await uploadPdfToCloudinary(
+      pdfBuffer,
+      `facture-${invoiceNumber}`
+    );
+
+    if (payment) {
+      await db
+        .update(payments)
+        .set({ invoice_url: invoiceUrl })
+        .where(eq(payments.order_id, orderId));
+      console.log(`☁️  Facture uploadée sur Cloudinary : ${invoiceUrl}`);
+    }
+  } catch (err) {
+    console.error("❌ Erreur upload Cloudinary facture:", err);
+  }
+
+  // 3. Template email
   const { subject, htmlContent, textContent } = orderConfirmationTemplate({
     buyerFirstName: buyer.first_name,
     orderId: order.id,
@@ -92,6 +144,7 @@ export async function sendOrderConfirmationEmail(orderId: number): Promise<void>
     sellerName: `${seller.first_name} ${seller.last_name}`,
   });
 
+  // 4. Envoi email avec pièce jointe
   await sendEmail({
     to: buyer.email,
     toName: buyer.first_name,

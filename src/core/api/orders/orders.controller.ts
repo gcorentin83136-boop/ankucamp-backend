@@ -10,6 +10,13 @@ import {
   updateOrderStatus,
   deleteOrder,
 } from "./orders.service";
+import { eq } from "drizzle-orm";
+import { db } from "../../db";
+import { orders, payments } from "../../db/schema";
+
+// ============================================================
+// LISTE
+// ============================================================
 
 export async function listMyOrders(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifié", 401);
@@ -22,6 +29,10 @@ export async function listSellerOrders(req: AuthRequest, res: Response) {
   const list = await getOrdersBySeller(req.user.id);
   return res.json({ success: true, orders: list });
 }
+
+// ============================================================
+// LECTURE
+// ============================================================
 
 export async function getOne(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifié", 401);
@@ -39,6 +50,10 @@ export async function getOne(req: AuthRequest, res: Response) {
   return res.json({ success: true, order });
 }
 
+// ============================================================
+// CRÉATION
+// ============================================================
+
 export async function createOne(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifié", 401);
 
@@ -51,6 +66,10 @@ export async function createOne(req: AuthRequest, res: Response) {
 
   return res.status(201).json({ success: true, message: "Commande créée", order });
 }
+
+// ============================================================
+// MISE À JOUR STATUT
+// ============================================================
 
 export async function updateStatus(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifié", 401);
@@ -67,6 +86,10 @@ export async function updateStatus(req: AuthRequest, res: Response) {
   return res.json({ success: true, message: "Statut mis à jour", order });
 }
 
+// ============================================================
+// SUPPRESSION
+// ============================================================
+
 export async function deleteOne(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifié", 401);
 
@@ -75,4 +98,50 @@ export async function deleteOne(req: AuthRequest, res: Response) {
 
   await deleteOrder(id, req.user.id);
   return res.status(204).send();
+}
+
+// ============================================================
+// 📄 TÉLÉCHARGEMENT FACTURE PDF
+// ============================================================
+
+/**
+ * GET /orders/:id/invoice
+ * Redirige vers la facture PDF stockée sur Cloudinary.
+ * Accessible uniquement à l'acheteur et au vendeur de la commande.
+ */
+export async function downloadInvoice(req: AuthRequest, res: Response) {
+  if (!req.user) throw new AppError("Non authentifié", 401);
+
+  const orderId = Number(req.params.id);
+  if (isNaN(orderId) || orderId <= 0) {
+    throw new AppError("ID commande invalide", 400);
+  }
+
+  // 1. Charger la commande
+  const [order] = await db
+    .select()
+    .from(orders)
+    .where(eq(orders.id, orderId))
+    .limit(1);
+
+  if (!order) throw new AppError("Commande introuvable", 404);
+
+  // 2. Autorisation : buyer OU seller
+  if (order.buyer_id !== req.user.id && order.seller_id !== req.user.id) {
+    throw new AppError("Vous n'avez pas accès à cette facture", 403);
+  }
+
+  // 3. Récupérer l'URL de la facture
+  const [payment] = await db
+    .select()
+    .from(payments)
+    .where(eq(payments.order_id, orderId))
+    .limit(1);
+
+  if (!payment || !payment.invoice_url) {
+    throw new AppError("Facture non disponible pour cette commande", 404);
+  }
+
+  // 4. Redirection 302 vers Cloudinary
+  return res.redirect(payment.invoice_url);
 }
