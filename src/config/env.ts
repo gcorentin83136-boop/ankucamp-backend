@@ -24,6 +24,11 @@ const envSchema = z.object({
 
   // Marketplace
   PLATFORM_FEE_PERCENT: z.coerce.number().min(0).max(100).default(2.5),
+
+  // Brevo (emails)
+  BREVO_API_KEY: z.string().startsWith("xkeysib-"),
+  EMAIL_FROM: z.string().email(),
+  EMAIL_FROM_NAME: z.string().min(1),
 });
 
 const parsed = envSchema.safeParse(process.env);

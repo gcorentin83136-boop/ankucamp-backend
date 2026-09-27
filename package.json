@@ -16,6 +16,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@getbrevo/brevo": "^6.0.3",
     "bcrypt": "^5.1.1",
     "cloudinary": "^2.11.0",
     "cors": "^2.8.5",
@@ -29,6 +30,7 @@
     "multer": "^2.4.0",
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",
+    "pdfkit": "^0.20.2",
     "pg": "^8.11.3",
     "pino": "^10.3.1",
     "pino-http": "^11.0.0",
@@ -46,6 +48,7 @@
     "@types/node": "^20.11.30",
     "@types/passport": "^1.0.17",
     "@types/passport-google-oauth20": "^2.0.17",
+    "@types/pdfkit": "^0.17.6",
     "@types/pg": "^8.11.0",
     "@types/supertest": "^6.0.2",
     "drizzle-kit": "^0.31.10",

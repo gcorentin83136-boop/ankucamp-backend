@@ -40,6 +40,12 @@ export const users = pgTable("users", {
     .default("not_connected")
     .notNull(),
 
+  // Tokens (activation + reset password)
+  activation_token: varchar("activation_token", { length: 255 }),
+  activation_token_expires: timestamp("activation_token_expires"),
+  reset_password_token: varchar("reset_password_token", { length: 255 }),
+  reset_password_token_expires: timestamp("reset_password_token_expires"),
+
   // Méta
   role: varchar("role", { length: 50 }).notNull(),
   email_verified: integer("email_verified").default(0).notNull(),

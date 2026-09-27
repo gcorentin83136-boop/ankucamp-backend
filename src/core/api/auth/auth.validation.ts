@@ -35,3 +35,21 @@ export const loginSchema = z.object({
 
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
+export const activateAccountSchema = z.object({
+  token: z.string().min(10, "Token invalide"),
+});
+
+export const forgotPasswordSchema = z.object({
+  email: z.string().email("Email invalide"),
+});
+
+export const resetPasswordSchema = z.object({
+  token: z.string().min(10, "Token invalide"),
+  new_password: z
+    .string()
+    .min(8, "Le mot de passe doit faire au moins 8 caractères"),
+});
+
+export type ActivateAccountInput = z.infer<typeof activateAccountSchema>;
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
