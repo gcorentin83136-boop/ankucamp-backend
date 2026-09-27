@@ -286,6 +286,17 @@ export async function handleStripeEvent(event: {
         .where(eq(orders.id, orderId));
 
       console.log(`✅ Paiement confirmé pour commande ${orderId}`);
+
+      // 📧 Envoyer l'email de confirmation de commande + facture PDF
+      // Import dynamique pour éviter tout risque de dépendance circulaire
+      // et ne pas bloquer la réponse au webhook Stripe.
+      const { sendOrderConfirmationEmail } = await import(
+        "../orders/orders.emails"
+      );
+      sendOrderConfirmationEmail(orderId).catch((err) =>
+        console.error("❌ Erreur envoi email confirmation:", err)
+      );
+
       break;
     }
 
