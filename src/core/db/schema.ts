@@ -34,6 +34,12 @@ export const users = pgTable("users", {
   provider_id: varchar("provider_id", { length: 255 }),
   avatar_url: text("avatar_url"),
 
+  // Stripe Connect (professionnels uniquement)
+  stripe_account_id: varchar("stripe_account_id", { length: 255 }),
+  stripe_account_status: varchar("stripe_account_status", { length: 50 })
+    .default("not_connected")
+    .notNull(),
+
   // Méta
   role: varchar("role", { length: 50 }).notNull(),
   email_verified: integer("email_verified").default(0).notNull(),
@@ -179,6 +185,13 @@ export const payments = pgTable("payments", {
   amount_tva: decimal("amount_tva", { precision: 10, scale: 2 }).notNull(),
   amount_ttc: decimal("amount_ttc", { precision: 10, scale: 2 }).notNull(),
   tva_rate: decimal("tva_rate", { precision: 4, scale: 2 }).notNull(),
+
+  // 💰 Split Stripe Connect
+  seller_id: integer("seller_id"),
+  seller_stripe_account_id: varchar("seller_stripe_account_id", { length: 255 }),
+  application_fee_amount: decimal("application_fee_amount", { precision: 10, scale: 2 }),
+  seller_amount: decimal("seller_amount", { precision: 10, scale: 2 }),
+
   status: varchar("status", { length: 50 }).default("pending").notNull(),
   invoice_url: text("invoice_url"),
   created_at: timestamp("created_at").defaultNow(),

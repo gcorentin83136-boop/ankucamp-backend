@@ -1,4 +1,4 @@
-import express from "express";
+import express, { raw } from "express";
 import cors from "cors";
 import helmet from "helmet";
 import pinoHttp from "pino-http";
@@ -13,6 +13,7 @@ import ordersRoutes from "./core/api/orders/orders.routes";
 import messagesRoutes from "./core/api/messages/messages.routes";
 import notificationsRoutes from "./core/api/notifications/notifications.routes";
 import uploadsRoutes from "./core/api/uploads/uploads.routes";
+import paymentsRoutes from "./core/api/payments/payments.routes";
 
 import { errorHandler } from "./core/errors/errorHandler";
 import { globalLimiter } from "./config/security";
@@ -57,9 +58,22 @@ app.use(
 );
 
 // ===============
+// STRIPE WEBHOOK (AVANT express.json !)
+// ===============
+// Le webhook Stripe a besoin du body en RAW (Buffer) pour vérifier la signature.
+// Donc on le monte AVANT express.json() pour qu'il ne soit PAS parsé.
+// Route montée ici : POST /payments/webhook
+app.use("/payments/webhook", raw({ type: "application/json" }));
+
+// ===============
 // PARSERS
 // ===============
 app.use(express.json({ limit: "1mb" }));
+
+// ===============
+// STRIPE (autres routes)
+// ===============
+app.use("/payments", paymentsRoutes);
 
 // ===============
 // PASSPORT (OAuth)
