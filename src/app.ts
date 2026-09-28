@@ -16,6 +16,8 @@ import uploadsRoutes from "./core/api/uploads/uploads.routes";
 import paymentsRoutes from "./core/api/payments/payments.routes";
 import reviewsRoutes from "./core/api/reviews/reviews.routes";
 import postsRoutes from "./core/api/posts/posts.routes";
+import friendsRoutes from "./core/api/friends/friends.routes";
+import followsRoutes from "./core/api/follows/follows.routes";
 
 import { errorHandler } from "./core/errors/errorHandler";
 import { globalLimiter } from "./config/security";
@@ -113,6 +115,8 @@ app.use("/notifications", notificationsRoutes);
 app.use("/uploads", uploadsRoutes);
 app.use("/reviews", reviewsRoutes);
 app.use("/posts", postsRoutes);
+app.use("/friends", friendsRoutes);
+app.use("/follows", followsRoutes);
 
 // ===============
 // 404
