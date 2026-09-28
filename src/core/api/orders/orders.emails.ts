@@ -8,6 +8,7 @@ import { invoiceResentTemplate } from "../../emails/templates/invoiceResent";
 import { orderShippedTemplate } from "../../emails/templates/orderShipped";
 import { orderDeliveredTemplate } from "../../emails/templates/orderDelivered";
 import { orderCancelledTemplate } from "../../emails/templates/orderCancelled";
+import { orderReviewRequestTemplate } from "../../emails/templates/orderReviewRequest";
 import { generateInvoicePdf, generateInvoiceNumber } from "../../emails/invoice";
 import { env } from "../../../config/env";
 import { cloudinary } from "../../../config/cloudinary";
@@ -368,5 +369,65 @@ export async function sendOrderStatusEmail(
 
   console.log(
     `📧 Email statut "${newStatus}" commande #${orderId} envoyé à ${buyer.email}`
+  );
+}
+
+// ============================================================
+// RELANCE AVIS (J+3 après livraison)
+// ============================================================
+
+/**
+ * Envoie un email de relance pour demander un avis.
+ * Appelé par le scheduler 3 jours après la livraison.
+ */
+export async function sendReviewRequestEmail(
+  orderId: number,
+  daysSinceDelivery: number
+): Promise<void> {
+  const [order] = await db
+    .select()
+    .from(orders)
+    .where(eq(orders.id, orderId))
+    .limit(1);
+
+  if (!order) {
+    console.error("sendReviewRequestEmail: commande introuvable", orderId);
+    return;
+  }
+
+  const [buyer] = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, order.buyer_id))
+    .limit(1);
+
+  const [seller] = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, order.seller_id))
+    .limit(1);
+
+  if (!buyer || !seller) {
+    console.error("sendReviewRequestEmail: buyer/seller introuvable");
+    return;
+  }
+
+  const tpl = orderReviewRequestTemplate({
+    buyerFirstName: buyer.first_name,
+    orderId: order.id,
+    sellerName: `${seller.first_name} ${seller.last_name}`,
+    daysSinceDelivery,
+  });
+
+  await sendEmail({
+    to: buyer.email,
+    toName: buyer.first_name,
+    subject: tpl.subject,
+    htmlContent: tpl.htmlContent,
+    textContent: tpl.textContent,
+  });
+
+  console.log(
+    `📧 Email relance avis commande #${orderId} envoyé à ${buyer.email}`
   );
 }

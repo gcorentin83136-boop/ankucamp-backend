@@ -14,6 +14,7 @@ import messagesRoutes from "./core/api/messages/messages.routes";
 import notificationsRoutes from "./core/api/notifications/notifications.routes";
 import uploadsRoutes from "./core/api/uploads/uploads.routes";
 import paymentsRoutes from "./core/api/payments/payments.routes";
+import reviewsRoutes from "./core/api/reviews/reviews.routes"; // ← AJOUT
 
 import { errorHandler } from "./core/errors/errorHandler";
 import { globalLimiter } from "./config/security";
@@ -112,6 +113,7 @@ app.use("/orders", ordersRoutes);
 app.use("/messages", messagesRoutes);
 app.use("/notifications", notificationsRoutes);
 app.use("/uploads", uploadsRoutes);
+app.use("/reviews", reviewsRoutes); // ← AJOUT
 
 // ===============
 // 404
