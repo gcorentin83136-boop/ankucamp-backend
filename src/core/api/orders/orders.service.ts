@@ -1,7 +1,9 @@
 import { eq, inArray } from "drizzle-orm";
 import { db } from "../../db";
-import { orders, orderItems, products } from "../../db/schema";
+import { orders, orderItems, products, payments, users } from "../../db/schema";
 import { AppError } from "../../errors/AppError";
+import { generateInvoiceNumber } from "../../emails/invoice";
+import { resendInvoiceEmail } from "./orders.emails";
 import type { CreateOrderInput } from "./orders.validation";
 
 // ============================================================
@@ -221,4 +223,73 @@ export async function deleteOrder(orderId: number, userId: number) {
 
   await db.delete(orderItems).where(eq(orderItems.order_id, orderId));
   await db.delete(orders).where(eq(orders.id, orderId));
+}
+
+// ============================================================
+// RENVOI FACTURE (feature "1 clic")
+// ============================================================
+
+/**
+ * Renvoie la facture PDF de la commande à un destinataire selon le rôle.
+ *
+ * Règles :
+ * - L'ACHETEUR peut se renvoyer la facture à lui-même
+ * - Le VENDEUR peut envoyer la facture à l'acheteur
+ * - Dans tous les cas, le destinataire final est l'ACHETEUR (buyer)
+ * - Bloqué si la commande n'a pas été payée (pas d'invoice_url)
+ */
+export async function resendInvoiceService(
+  orderId: number,
+  userId: number
+): Promise<{ sentTo: string; invoiceNumber: string }> {
+  // 1. Charger la commande
+  const [order] = await db
+    .select()
+    .from(orders)
+    .where(eq(orders.id, orderId))
+    .limit(1);
+
+  if (!order) {
+    throw new AppError("Commande introuvable", 404);
+  }
+
+  // 2. Vérifier que l'utilisateur est buyer OU seller
+  if (order.buyer_id !== userId && order.seller_id !== userId) {
+    throw new AppError("Vous n'avez pas accès à cette facture", 403);
+  }
+
+  // 3. Vérifier que la commande est payée
+  const [payment] = await db
+    .select()
+    .from(payments)
+    .where(eq(payments.order_id, orderId))
+    .limit(1);
+
+  if (!payment || !payment.invoice_url) {
+    throw new AppError(
+      "La facture n'est pas disponible pour cette commande (commande non payée)",
+      400
+    );
+  }
+
+  // 4. Charger l'acheteur (destinataire final dans tous les cas)
+  const [buyer] = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, order.buyer_id))
+    .limit(1);
+
+  if (!buyer) {
+    throw new AppError("Acheteur introuvable", 404);
+  }
+
+  // 5. Envoyer la facture à l'acheteur
+  await resendInvoiceEmail(order.id, buyer.email, buyer.first_name);
+
+  const invoiceNumber = generateInvoiceNumber(order.id);
+
+  return {
+    sentTo: buyer.email,
+    invoiceNumber,
+  };
 }

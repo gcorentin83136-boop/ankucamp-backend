@@ -9,6 +9,7 @@ import {
   updateStatus,
   deleteOne,
   downloadInvoice,
+  resendInvoice,
 } from "./orders.controller";
 
 const router = Router();
@@ -22,6 +23,7 @@ router.post("/", asyncHandler(createOne));
 
 // ⚠️ Doit être déclaré AVANT "/:id" pour ne pas être capturé par le param
 router.get("/:id/invoice", asyncHandler(downloadInvoice));
+router.post("/:id/invoice/resend", asyncHandler(resendInvoice));
 
 // Routes dynamiques
 router.get("/:id", asyncHandler(getOne));

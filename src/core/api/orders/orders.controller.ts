@@ -9,6 +9,7 @@ import {
   createOrder,
   updateOrderStatus,
   deleteOrder,
+  resendInvoiceService,
 } from "./orders.service";
 import { eq } from "drizzle-orm";
 import { db } from "../../db";
@@ -107,7 +108,6 @@ export async function deleteOne(req: AuthRequest, res: Response) {
 /**
  * GET /orders/:id/invoice
  * Redirige vers la facture PDF stockée sur Cloudinary.
- * Accessible uniquement à l'acheteur et au vendeur de la commande.
  */
 export async function downloadInvoice(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifié", 401);
@@ -117,7 +117,6 @@ export async function downloadInvoice(req: AuthRequest, res: Response) {
     throw new AppError("ID commande invalide", 400);
   }
 
-  // 1. Charger la commande
   const [order] = await db
     .select()
     .from(orders)
@@ -126,12 +125,10 @@ export async function downloadInvoice(req: AuthRequest, res: Response) {
 
   if (!order) throw new AppError("Commande introuvable", 404);
 
-  // 2. Autorisation : buyer OU seller
   if (order.buyer_id !== req.user.id && order.seller_id !== req.user.id) {
     throw new AppError("Vous n'avez pas accès à cette facture", 403);
   }
 
-  // 3. Récupérer l'URL de la facture
   const [payment] = await db
     .select()
     .from(payments)
@@ -142,6 +139,33 @@ export async function downloadInvoice(req: AuthRequest, res: Response) {
     throw new AppError("Facture non disponible pour cette commande", 404);
   }
 
-  // 4. Redirection 302 vers Cloudinary
   return res.redirect(payment.invoice_url);
+}
+
+// ============================================================
+// 📧 RENVOI FACTURE PAR EMAIL
+// ============================================================
+
+/**
+ * POST /orders/:id/invoice/resend
+ * Renvoie la facture PDF par email.
+ * - Acheteur : reçoit la facture à sa propre adresse
+ * - Vendeur  : envoie la facture à l'acheteur
+ */
+export async function resendInvoice(req: AuthRequest, res: Response) {
+  if (!req.user) throw new AppError("Non authentifié", 401);
+
+  const orderId = Number(req.params.id);
+  if (isNaN(orderId) || orderId <= 0) {
+    throw new AppError("ID commande invalide", 400);
+  }
+
+  const result = await resendInvoiceService(orderId, req.user.id);
+
+  return res.json({
+    success: true,
+    message: `Facture envoyée à ${result.sentTo}`,
+    sentTo: result.sentTo,
+    invoiceNumber: result.invoiceNumber,
+  });
 }

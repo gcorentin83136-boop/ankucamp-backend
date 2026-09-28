@@ -4,12 +4,14 @@ import { orders, orderItems, products, users, payments } from "../../db/schema";
 import { sendEmail } from "../../emails/email.service";
 import { orderConfirmationTemplate } from "../../emails/templates/orderConfirmation";
 import { sellerNewOrderTemplate } from "../../emails/templates/sellerNewOrder";
+import { invoiceResentTemplate } from "../../emails/templates/invoiceResent";
 import { generateInvoicePdf, generateInvoiceNumber } from "../../emails/invoice";
 import { env } from "../../../config/env";
 import { cloudinary } from "../../../config/cloudinary";
+import { AppError } from "../../errors/AppError";
 
 // ============================================================
-// UPLOAD CLOUDINARY
+// UPLOAD / DOWNLOAD CLOUDINARY
 // ============================================================
 
 function uploadPdfToCloudinary(
@@ -19,7 +21,7 @@ function uploadPdfToCloudinary(
   return new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
       {
-        resource_type: "raw", // ← IMPORTANT pour PDF
+        resource_type: "raw",
         folder: "anku/invoices",
         public_id: publicId,
         format: "pdf",
@@ -34,16 +36,22 @@ function uploadPdfToCloudinary(
   });
 }
 
+async function downloadInvoiceFromCloudinary(url: string): Promise<Buffer> {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new AppError(
+      `Impossible de récupérer la facture (${response.status})`,
+      500
+    );
+  }
+  const arrayBuffer = await response.arrayBuffer();
+  return Buffer.from(arrayBuffer);
+}
+
 // ============================================================
-// ENVOI EMAIL + FACTURE
+// EMAIL CONFIRMATION + FACTURE (appelé par le webhook)
 // ============================================================
 
-/**
- * Envoie l'email de confirmation de commande avec la facture PDF en pièce jointe.
- * Upload aussi la facture sur Cloudinary et stocke l'URL dans payments.invoice_url.
- * Envoie également un email de notification au vendeur.
- * Appelé après un paiement Stripe réussi (webhook).
- */
 export async function sendOrderConfirmationEmail(orderId: number): Promise<void> {
   const [order] = await db
     .select()
@@ -95,9 +103,7 @@ export async function sendOrderConfirmationEmail(orderId: number): Promise<void>
     unitPrice: i.unitPrice,
   }));
 
-  // ============================================================
-  // 1. Génération du PDF en mémoire
-  // ============================================================
+  // 1. Génération du PDF
   const invoiceNumber = generateInvoiceNumber(orderId);
   const pdfBuffer = await generateInvoicePdf({
     invoiceNumber,
@@ -117,9 +123,7 @@ export async function sendOrderConfirmationEmail(orderId: number): Promise<void>
     platformFeePercent: env.PLATFORM_FEE_PERCENT,
   });
 
-  // ============================================================
-  // 2. Upload Cloudinary (n'échoue pas l'envoi email si erreur)
-  // ============================================================
+  // 2. Upload Cloudinary
   try {
     const invoiceUrl = await uploadPdfToCloudinary(
       pdfBuffer,
@@ -137,9 +141,7 @@ export async function sendOrderConfirmationEmail(orderId: number): Promise<void>
     console.error("❌ Erreur upload Cloudinary facture:", err);
   }
 
-  // ============================================================
-  // 3. Email ACHETEUR : confirmation + facture PDF
-  // ============================================================
+  // 3. Email ACHETEUR
   const buyerTpl = orderConfirmationTemplate({
     buyerFirstName: buyer.first_name,
     orderId: order.id,
@@ -166,9 +168,7 @@ export async function sendOrderConfirmationEmail(orderId: number): Promise<void>
 
   console.log(`📧 Email confirmation commande #${orderId} envoyé à ${buyer.email}`);
 
-  // ============================================================
-  // 4. Email VENDEUR : nouvelle commande
-  // ============================================================
+  // 4. Email VENDEUR
   try {
     const sellerTpl = sellerNewOrderTemplate({
       sellerFirstName: seller.first_name,
@@ -196,7 +196,74 @@ export async function sendOrderConfirmationEmail(orderId: number): Promise<void>
       `📧 Email nouvelle commande #${orderId} envoyé au vendeur ${seller.email}`
     );
   } catch (err) {
-    // On ne bloque PAS le flux si l'email vendeur échoue
     console.error("❌ Erreur envoi email vendeur:", err);
   }
+}
+
+// ============================================================
+// RENVOI FACTURE (feature "1 clic" depuis Mes commandes)
+// ============================================================
+
+/**
+ * Renvoie la facture PDF ORIGINALE (depuis Cloudinary) à un destinataire.
+ * Utilisé par l'endpoint POST /orders/:id/invoice/resend.
+ */
+export async function resendInvoiceEmail(
+  orderId: number,
+  recipientEmail: string,
+  recipientFirstName: string
+): Promise<void> {
+  const [order] = await db
+    .select()
+    .from(orders)
+    .where(eq(orders.id, orderId))
+    .limit(1);
+
+  if (!order) {
+    throw new AppError("Commande introuvable", 404);
+  }
+
+  const [payment] = await db
+    .select()
+    .from(payments)
+    .where(eq(payments.order_id, orderId))
+    .limit(1);
+
+  if (!payment || !payment.invoice_url) {
+    throw new AppError(
+      "La facture n'est pas disponible pour cette commande (commande non payée)",
+      400
+    );
+  }
+
+  // 1. Télécharger le PDF ORIGINAL depuis Cloudinary
+  const pdfBuffer = await downloadInvoiceFromCloudinary(payment.invoice_url);
+
+  const invoiceNumber = generateInvoiceNumber(orderId);
+
+  // 2. Template email dédié "renvoi de facture"
+  const tpl = invoiceResentTemplate({
+    recipientFirstName,
+    orderId: order.id,
+    invoiceNumber,
+  });
+
+  // 3. Envoi avec pièce jointe
+  await sendEmail({
+    to: recipientEmail,
+    toName: recipientFirstName,
+    subject: tpl.subject,
+    htmlContent: tpl.htmlContent,
+    textContent: tpl.textContent,
+    attachments: [
+      {
+        name: `facture-${invoiceNumber}.pdf`,
+        content: pdfBuffer.toString("base64"),
+      },
+    ],
+  });
+
+  console.log(
+    `📧 Facture #${invoiceNumber} renvoyée à ${recipientEmail} (commande #${orderId})`
+  );
 }

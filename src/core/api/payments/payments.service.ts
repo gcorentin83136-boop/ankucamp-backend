@@ -272,6 +272,32 @@ export async function handleStripeEvent(event: {
       const orderId = Number(session.metadata?.order_id);
       if (!orderId) return;
 
+      // ============================================================
+      // ⚠️ IDEMPOTENCE : si la commande a déjà été traitée et que la
+      // facture existe déjà sur Cloudinary, on ne refait RIEN.
+      // Ça évite :
+      //   - d'écraser la facture originale (date émise) en cas de retry Stripe
+      //   - d'envoyer 2x les emails si Stripe renvoie l'event
+      // ============================================================
+      const [existingPayment] = await db
+        .select()
+        .from(payments)
+        .where(eq(payments.order_id, orderId))
+        .limit(1);
+
+      if (
+        existingPayment?.status === "succeeded" &&
+        existingPayment?.invoice_url
+      ) {
+        console.log(
+          `ℹ️  Webhook déjà traité pour commande #${orderId} (facture existante : ${existingPayment.invoice_url}), skip.`
+        );
+        return;
+      }
+
+      // ============================================================
+      // TRAITEMENT NORMAL
+      // ============================================================
       await db
         .update(payments)
         .set({
@@ -287,9 +313,7 @@ export async function handleStripeEvent(event: {
 
       console.log(`✅ Paiement confirmé pour commande ${orderId}`);
 
-      // 📧 Envoyer l'email de confirmation de commande + facture PDF
-      // Import dynamique pour éviter tout risque de dépendance circulaire
-      // et ne pas bloquer la réponse au webhook Stripe.
+      // 📧 Envoyer l'email de confirmation + facture (acheteur + vendeur)
       const { sendOrderConfirmationEmail } = await import(
         "../orders/orders.emails"
       );
