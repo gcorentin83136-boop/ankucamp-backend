@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "../../db";
 import { users } from "../../db/schema";
 import { sendEmail } from "../../emails/email.service";
-import { welcomeEmailTemplate } from "../../emails/templates/welcome";
+import { welcomeTemplate } from "../../emails/templates/welcome";
 import { forgotPasswordTemplate } from "../../emails/templates/forgotPassword";
 import { env } from "../../../config/env";
 
@@ -43,10 +43,10 @@ export async function sendActivationEmail(
 
   const activationUrl = `${FRONTEND_URL}/auth/activate?token=${token}`;
 
-  const { subject, htmlContent, textContent } = welcomeEmailTemplate(
+  const { subject, htmlContent, textContent } = welcomeTemplate({
     firstName,
-    activationUrl
-  );
+    activationUrl,
+  });
 
   await sendEmail({
     to: email,
@@ -85,10 +85,10 @@ export async function sendResetPasswordEmail(email: string): Promise<void> {
 
   const resetUrl = `${FRONTEND_URL}/auth/reset-password?token=${token}`;
 
-  const { subject, htmlContent, textContent } = forgotPasswordTemplate(
-    user.first_name,
-    resetUrl
-  );
+  const { subject, htmlContent, textContent } = forgotPasswordTemplate({
+    firstName: user.first_name,
+    resetUrl,
+  });
 
   await sendEmail({
     to: email,
