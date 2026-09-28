@@ -111,7 +111,7 @@ export const orders = pgTable("orders", {
   delivery_address: text("delivery_address"),
   tracking_number: varchar("tracking_number", { length: 255 }),
   delivered_at: timestamp("delivered_at"),
-  review_requested_at: timestamp("review_requested_at"), // ← AJOUT (scheduler J+3)
+  review_requested_at: timestamp("review_requested_at"),
   created_at: timestamp("created_at").defaultNow(),
 });
 
@@ -195,9 +195,13 @@ export const messages = pgTable("messages", {
 export const notifications = pgTable("notifications", {
   id: serial("id").primaryKey(),
   user_id: integer("user_id").notNull(),
+  type: varchar("type", { length: 50 }).notNull(), // 'order', 'review', 'message', 'system'
   title: varchar("title", { length: 255 }).notNull(),
   content: text("content").notNull(),
-  is_read: integer("is_read").default(0),
+  link: varchar("link", { length: 255 }),
+  data: text("data"),
+  is_read: integer("is_read").default(0).notNull(),
+  read_at: timestamp("read_at"),
   created_at: timestamp("created_at").defaultNow(),
 });
 

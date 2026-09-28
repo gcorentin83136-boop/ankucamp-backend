@@ -9,6 +9,7 @@ import {
   users,
 } from "../../db/schema";
 import { AppError } from "../../errors/AppError";
+import { notifyNewReview } from "../../notifications/notifications.helper";
 import type {
   CreateReviewInput,
   ListReviewsQuery,
@@ -98,6 +99,35 @@ export async function createReview(
       comment: comment ?? null,
     })
     .returning();
+
+  // ============================================================
+  // 🔔 Notif vendeur (fire & forget)
+  // ============================================================
+  try {
+    const [author] = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, authorId))
+      .limit(1);
+
+    const [product] = await db
+      .select()
+      .from(products)
+      .where(eq(products.id, product_id))
+      .limit(1);
+
+    if (author && product) {
+      await notifyNewReview(
+        order.seller_id,
+        review.id,
+        rating,
+        product.name,
+        `${author.first_name} ${author.last_name}`
+      );
+    }
+  } catch (err) {
+    console.error("❌ Erreur notification nouvel avis:", err);
+  }
 
   return review;
 }
@@ -261,7 +291,6 @@ export async function getProductRatingStats(productId: number) {
 
 /**
  * Calcule les stats de plusieurs produits en 1 seule requête.
- * Utile pour les listes de produits.
  */
 export async function getBulkProductRatingStats(productIds: number[]) {
   if (productIds.length === 0) {
@@ -340,7 +369,6 @@ export async function deleteReview(reviewId: number, userId: number) {
 
 /**
  * Signale un avis (par le vendeur concerné uniquement).
- * Marque l'avis comme signalé (is_flagged = 1) et enregistre la raison.
  */
 export async function reportReview(
   reviewId: number,
@@ -357,12 +385,10 @@ export async function reportReview(
     throw new AppError("Avis introuvable", 404);
   }
 
-  // Seul le vendeur concerné peut signaler
   if (review.seller_id !== reporterId) {
     throw new AppError("Seul le vendeur concerné peut signaler cet avis", 403);
   }
 
-  // Vérifie qu'il n'a pas déjà signalé
   const [existingReport] = await db
     .select()
     .from(reviewReports)
@@ -378,14 +404,12 @@ export async function reportReview(
     throw new AppError("Tu as déjà signalé cet avis", 400);
   }
 
-  // Enregistre le signalement
   await db.insert(reviewReports).values({
     review_id: reviewId,
     reporter_id: reporterId,
     reason,
   });
 
-  // Marque l'avis comme signalé
   await db
     .update(reviews)
     .set({ is_flagged: 1, flag_reason: reason })

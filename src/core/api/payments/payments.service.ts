@@ -4,6 +4,7 @@ import { payments, orders, orderItems, products, users } from "../../db/schema";
 import { AppError } from "../../errors/AppError";
 import { stripe } from "../../../config/stripe";
 import { env } from "../../../config/env";
+import { notifyNewOrder } from "../../notifications/notifications.helper";
 
 const FRONTEND_URL =
   env.NODE_ENV === "development"
@@ -273,11 +274,7 @@ export async function handleStripeEvent(event: {
       if (!orderId) return;
 
       // ============================================================
-      // ⚠️ IDEMPOTENCE : si la commande a déjà été traitée et que la
-      // facture existe déjà sur Cloudinary, on ne refait RIEN.
-      // Ça évite :
-      //   - d'écraser la facture originale (date émise) en cas de retry Stripe
-      //   - d'envoyer 2x les emails si Stripe renvoie l'event
+      // ⚠️ IDEMPOTENCE
       // ============================================================
       const [existingPayment] = await db
         .select()
@@ -313,7 +310,35 @@ export async function handleStripeEvent(event: {
 
       console.log(`✅ Paiement confirmé pour commande ${orderId}`);
 
-      // 📧 Envoyer l'email de confirmation + facture (acheteur + vendeur)
+      // 🔔 NOTIF VENDEUR : nouvelle commande
+      try {
+        const [order] = await db
+          .select()
+          .from(orders)
+          .where(eq(orders.id, orderId))
+          .limit(1);
+
+        if (order) {
+          const [buyer] = await db
+            .select()
+            .from(users)
+            .where(eq(users.id, order.buyer_id))
+            .limit(1);
+
+          if (buyer) {
+            await notifyNewOrder(
+              order.seller_id,
+              order.id,
+              `${buyer.first_name} ${buyer.last_name}`,
+              order.total_price
+            );
+          }
+        }
+      } catch (err) {
+        console.error("❌ Erreur notif nouvelle commande:", err);
+      }
+
+      // 📧 Email de confirmation + facture (acheteur + vendeur)
       const { sendOrderConfirmationEmail } = await import(
         "../orders/orders.emails"
       );

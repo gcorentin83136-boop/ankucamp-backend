@@ -8,10 +8,20 @@ import { notifications } from "../src/core/db/schema";
 
 describe("Notifications module", () => {
   // Helper : créer une notif directement en DB
-  async function createNotification(userId: number, title = "Test", content = "Contenu") {
+  async function createNotification(
+    userId: number,
+    title = "Test",
+    content = "Contenu"
+  ) {
     const [notif] = await testDb
       .insert(notifications)
-      .values({ user_id: userId, title, content, is_read: 0 })
+      .values({
+        user_id: userId,
+        type: "system",
+        title,
+        content,
+        is_read: 0,
+      })
       .returning();
     return notif;
   }
@@ -50,7 +60,9 @@ describe("Notifications module", () => {
 
       expect(res.status).toBe(200);
       expect(res.body.notifications).toHaveLength(2);
-      expect(res.body.notifications.every((n: any) => n.user_id === user1.id)).toBe(true);
+      expect(
+        res.body.notifications.every((n: any) => n.user_id === user1.id)
+      ).toBe(true);
     });
   });
 

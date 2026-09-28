@@ -4,6 +4,11 @@ import { orders, orderItems, products, payments, users } from "../../db/schema";
 import { AppError } from "../../errors/AppError";
 import { generateInvoiceNumber } from "../../emails/invoice";
 import { resendInvoiceEmail, sendOrderStatusEmail } from "./orders.emails";
+import {
+  notifyOrderShipped,
+  notifyOrderDelivered,
+  notifyOrderCancelled,
+} from "../../notifications/notifications.helper";
 import type { CreateOrderInput } from "./orders.validation";
 
 // ============================================================
@@ -193,7 +198,11 @@ export async function updateOrderStatus(
   }
 
   // Prépare les champs à mettre à jour
-  const updates: { status: string; tracking_number?: string | null } = {
+  const updates: {
+    status: string;
+    tracking_number?: string | null;
+    delivered_at?: Date;
+  } = {
     status: newStatus,
   };
 
@@ -202,17 +211,49 @@ export async function updateOrderStatus(
     updates.tracking_number = trackingNumber;
   }
 
+  // Si on passe à "delivered", on enregistre la date (utile pour scheduler J+3)
+  if (newStatus === "delivered") {
+    updates.delivered_at = new Date();
+  }
+
   const [updated] = await db
     .update(orders)
     .set(updates)
     .where(eq(orders.id, orderId))
     .returning();
 
-  // 📧 Envoie un email au buyer selon le nouveau statut (fire & forget)
+  // ============================================================
+  // 📧 Email au buyer (fire & forget)
+  // ============================================================
   if (["shipped", "delivered", "cancelled"].includes(newStatus)) {
     sendOrderStatusEmail(orderId, newStatus).catch((err) =>
       console.error("❌ Erreur envoi email statut:", err)
     );
+  }
+
+  // ============================================================
+  // 🔔 Notifications in-app (fire & forget)
+  // ============================================================
+  try {
+    switch (newStatus) {
+      case "shipped":
+        await notifyOrderShipped(
+          order.buyer_id,
+          orderId,
+          updates.tracking_number ?? order.tracking_number
+        );
+        break;
+
+      case "delivered":
+        await notifyOrderDelivered(order.buyer_id, orderId);
+        break;
+
+      case "cancelled":
+        await notifyOrderCancelled(order.seller_id, orderId);
+        break;
+    }
+  } catch (err) {
+    console.error("❌ Erreur notification changement statut:", err);
   }
 
   return updated;
