@@ -1,7 +1,25 @@
 import { Request, Response } from "express";
 import { AuthRequest } from "../../middlewares/auth.middleware";
 import { AppError } from "../../errors/AppError";
-import { getUserById, getAllUsers, updateUser } from "./users.service";
+import {
+  getUserById,
+  getUserByUsername,
+  getAllUsers,
+  searchUsers,
+  updateUser,
+  updatePrivacy,
+  getUserStats,
+} from "./users.service";
+import {
+  updateProfileSchema,
+  updatePrivacySchema,
+  listUsersQuerySchema,
+} from "./users.validation";
+import { listFriends } from "../friends/friends.service";
+
+// ============================================================
+// MES INFOS
+// ============================================================
 
 export async function getMe(req: AuthRequest, res: Response) {
   if (!req.user) {
@@ -17,40 +35,18 @@ export async function getMe(req: AuthRequest, res: Response) {
 }
 
 export async function updateMe(req: AuthRequest, res: Response) {
-  if (!req.user) {
-    throw new AppError("Non authentifié", 401);
+  if (!req.user) throw new AppError("Non authentifié", 401);
+
+  const parsed = updateProfileSchema.safeParse(req.body);
+  if (!parsed.success) {
+    throw new AppError(
+      "Données invalides",
+      400,
+      parsed.error.flatten().fieldErrors
+    );
   }
 
-  const {
-    first_name,
-    last_name,
-    email,
-    address,
-    city,
-    postal_code,
-    country,
-    avatar_url,
-  } = req.body as {
-    first_name?: string;
-    last_name?: string;
-    email?: string;
-    address?: string;
-    city?: string;
-    postal_code?: string;
-    country?: string;
-    avatar_url?: string;
-  };
-
-  const updated = await updateUser(req.user.id, {
-    first_name,
-    last_name,
-    email,
-    address,
-    city,
-    postal_code,
-    country,
-    avatar_url,
-  });
+  const updated = await updateUser(req.user.id, parsed.data);
 
   if (!updated) {
     throw new AppError("Utilisateur introuvable", 404);
@@ -61,6 +57,53 @@ export async function updateMe(req: AuthRequest, res: Response) {
     message: "Profil mis à jour",
     user: updated,
   });
+}
+
+// ============================================================
+// PRIVACY
+// ============================================================
+
+export async function putPrivacy(req: AuthRequest, res: Response) {
+  if (!req.user) throw new AppError("Non authentifié", 401);
+
+  const parsed = updatePrivacySchema.safeParse(req.body);
+  if (!parsed.success) {
+    throw new AppError(
+      "Données invalides",
+      400,
+      parsed.error.flatten().fieldErrors
+    );
+  }
+
+  const updated = await updatePrivacy(req.user.id, parsed.data.is_private);
+
+  return res.json({
+    success: true,
+    message: `Profil ${updated.is_private ? "privé" : "public"}`,
+    user: updated,
+  });
+}
+
+// ============================================================
+// LECTURE PUBLIQUE
+// ============================================================
+
+export async function getAll(req: Request, res: Response) {
+  const parsed = listUsersQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    throw new AppError(
+      "Paramètres invalides",
+      400,
+      parsed.error.flatten().fieldErrors
+    );
+  }
+
+  const list =
+    parsed.data.search && parsed.data.search.trim() !== ""
+      ? await searchUsers(parsed.data)
+      : await getAllUsers();
+
+  return res.json({ success: true, count: list.length, users: list });
 }
 
 export async function getOne(req: Request, res: Response) {
@@ -77,7 +120,64 @@ export async function getOne(req: Request, res: Response) {
   return res.json({ success: true, user });
 }
 
-export async function getAll(_req: Request, res: Response) {
-  const list = await getAllUsers();
-  return res.json({ success: true, users: list });
+/**
+ * Récupère un user par username (profil public).
+ */
+export async function getByUsername(req: Request, res: Response) {
+  const username = req.params.username;
+  if (!username) {
+    throw new AppError("Username requis", 400);
+  }
+
+  const user = await getUserByUsername(username);
+  if (!user) {
+    throw new AppError("Utilisateur introuvable", 404);
+  }
+
+  return res.json({ success: true, user });
+}
+
+/**
+ * Stats publiques d'un profil.
+ */
+export async function getStats(req: Request, res: Response) {
+  const id = Number(req.params.id);
+  if (isNaN(id)) {
+    throw new AppError("ID invalide", 400);
+  }
+
+  const user = await getUserById(id);
+  if (!user) {
+    throw new AppError("Utilisateur introuvable", 404);
+  }
+
+  const stats = await getUserStats(id);
+
+  return res.json({ success: true, stats });
+}
+
+/**
+ * Liste des amis d'un user (public si profil public).
+ */
+export async function getFriends(req: AuthRequest, res: Response) {
+  const id = Number(req.params.id);
+  if (isNaN(id)) {
+    throw new AppError("ID invalide", 400);
+  }
+
+  const user = await getUserById(id);
+  if (!user) {
+    throw new AppError("Utilisateur introuvable", 404);
+  }
+
+  // Si profil privé → seul l'user lui-même peut voir ses amis
+  if (user.is_private === 1) {
+    if (!req.user || req.user.id !== id) {
+      throw new AppError("Ce profil est privé", 403);
+    }
+  }
+
+  const friends = await listFriends(id, { limit: 100, offset: 0 });
+
+  return res.json({ success: true, count: friends.length, friends });
 }

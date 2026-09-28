@@ -6,20 +6,37 @@ import { users, shops, products } from "../../db/schema";
 import { AppError } from "../../errors/AppError";
 import { AuthRequest } from "../../middlewares/auth.middleware";
 
+// ============================================================
+// HELPER CLOUDINARY
+// ============================================================
+
+interface UploadOptions {
+  width?: number;
+  height?: number;
+  crop?: string;
+}
+
 /**
- * Upload un buffer vers Cloudinary.
+ * Upload un buffer vers Cloudinary avec transformation optionnelle.
  */
 async function uploadToCloudinary(
   buffer: Buffer,
-  folder: string
+  folder: string,
+  options: UploadOptions = {}
 ): Promise<string> {
+  const {
+    width = 1000,
+    height = 1000,
+    crop = "limit",
+  } = options;
+
   return new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
       {
         folder,
         resource_type: "image",
         transformation: [
-          { width: 1000, height: 1000, crop: "limit" },
+          { width, height, crop },
           { quality: "auto:good" },
           { fetch_format: "auto" },
         ],
@@ -43,11 +60,15 @@ async function uploadToCloudinary(
 // ============================================================
 // POST /uploads/avatar
 // ============================================================
+
 export async function uploadAvatar(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifié", 401);
   if (!req.file) throw new AppError("Aucun fichier fourni", 400);
 
-  const url = await uploadToCloudinary(req.file.buffer, "ankucamp/avatars");
+  const url = await uploadToCloudinary(req.file.buffer, "ankucamp/avatars", {
+    width: 500,
+    height: 500,
+  });
 
   await db
     .update(users)
@@ -62,8 +83,34 @@ export async function uploadAvatar(req: AuthRequest, res: Response) {
 }
 
 // ============================================================
+// POST /uploads/cover
+// ============================================================
+
+export async function uploadCover(req: AuthRequest, res: Response) {
+  if (!req.user) throw new AppError("Non authentifié", 401);
+  if (!req.file) throw new AppError("Aucun fichier fourni", 400);
+
+  const url = await uploadToCloudinary(req.file.buffer, "ankucamp/covers", {
+    width: 2000,
+    height: 600,
+  });
+
+  await db
+    .update(users)
+    .set({ cover_url: url })
+    .where(eq(users.id, req.user.id));
+
+  return res.status(200).json({
+    success: true,
+    message: "Photo de couverture mise à jour",
+    url,
+  });
+}
+
+// ============================================================
 // POST /uploads/shop-logo
 // ============================================================
+
 export async function uploadShopLogo(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifié", 401);
   if (!req.file) throw new AppError("Aucun fichier fourni", 400);
@@ -82,7 +129,10 @@ export async function uploadShopLogo(req: AuthRequest, res: Response) {
     throw new AppError("Vous n'êtes pas le propriétaire de cette boutique", 403);
   }
 
-  const url = await uploadToCloudinary(req.file.buffer, "ankucamp/shops");
+  const url = await uploadToCloudinary(req.file.buffer, "ankucamp/shops", {
+    width: 500,
+    height: 500,
+  });
 
   await db.update(shops).set({ logo_url: url }).where(eq(shops.id, shopId));
 
@@ -96,6 +146,7 @@ export async function uploadShopLogo(req: AuthRequest, res: Response) {
 // ============================================================
 // POST /uploads/product
 // ============================================================
+
 export async function uploadProductImage(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifié", 401);
   if (!req.file) throw new AppError("Aucun fichier fourni", 400);
@@ -126,7 +177,10 @@ export async function uploadProductImage(req: AuthRequest, res: Response) {
     );
   }
 
-  const url = await uploadToCloudinary(req.file.buffer, "ankucamp/products");
+  const url = await uploadToCloudinary(req.file.buffer, "ankucamp/products", {
+    width: 1200,
+    height: 1200,
+  });
 
   await db
     .update(products)
@@ -136,6 +190,31 @@ export async function uploadProductImage(req: AuthRequest, res: Response) {
   return res.status(200).json({
     success: true,
     message: "Image produit mise à jour",
+    url,
+  });
+}
+
+// ============================================================
+// POST /uploads/post-media
+// ============================================================
+
+/**
+ * Upload un média pour un post.
+ * Retourne l'URL sans rien modifier en BDD (le client l'utilisera
+ * ensuite dans POST /posts).
+ */
+export async function uploadPostMedia(req: AuthRequest, res: Response) {
+  if (!req.user) throw new AppError("Non authentifié", 401);
+  if (!req.file) throw new AppError("Aucun fichier fourni", 400);
+
+  const url = await uploadToCloudinary(req.file.buffer, "ankucamp/posts", {
+    width: 1200,
+    height: 1200,
+  });
+
+  return res.status(200).json({
+    success: true,
+    message: "Média uploadé",
     url,
   });
 }
