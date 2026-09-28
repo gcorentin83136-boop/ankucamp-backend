@@ -1,5 +1,50 @@
+# ================
+# DÉPENDANCES
+# ================
 node_modules/
+
+# ================
+# BUILD
+# ================
 dist/
+build/
+
+# ================
+# ENV
+# ================
 .env
+.env.local
+.env.*.local
+
+# ================
+# LOGS
+# ================
 *.log
-.DS_Storestripe-*.txt
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ================
+# OS
+# ================
+.DS_Store
+Thumbs.db
+
+# ================
+# IDE
+# ================
+.vscode/
+.idea/
+*.swp
+
+# ================
+# STRIPE (fichiers temporaires)
+# ================
+stripe-*.txt
+
+# ================
+# SCRIPTS DE DEV PERSO (ne pas commit)
+# ================
+scripts/_*.ts
+scripts/test-*.ts
