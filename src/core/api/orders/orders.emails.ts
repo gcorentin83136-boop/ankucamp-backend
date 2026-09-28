@@ -5,6 +5,9 @@ import { sendEmail } from "../../emails/email.service";
 import { orderConfirmationTemplate } from "../../emails/templates/orderConfirmation";
 import { sellerNewOrderTemplate } from "../../emails/templates/sellerNewOrder";
 import { invoiceResentTemplate } from "../../emails/templates/invoiceResent";
+import { orderShippedTemplate } from "../../emails/templates/orderShipped";
+import { orderDeliveredTemplate } from "../../emails/templates/orderDelivered";
+import { orderCancelledTemplate } from "../../emails/templates/orderCancelled";
 import { generateInvoicePdf, generateInvoiceNumber } from "../../emails/invoice";
 import { env } from "../../../config/env";
 import { cloudinary } from "../../../config/cloudinary";
@@ -265,5 +268,105 @@ export async function resendInvoiceEmail(
 
   console.log(
     `📧 Facture #${invoiceNumber} renvoyée à ${recipientEmail} (commande #${orderId})`
+  );
+}
+
+// ============================================================
+// NOTIFICATION CHANGEMENT DE STATUT COMMANDE
+// ============================================================
+
+/**
+ * Envoie un email au buyer selon le nouveau statut de la commande.
+ * Appelé depuis updateOrderStatus() quand le vendeur change le statut.
+ *
+ * Statuts déclencheurs : shipped, delivered, cancelled
+ * Statuts ignorés : pending, confirmed (déjà couverts par orderConfirmation)
+ */
+export async function sendOrderStatusEmail(
+  orderId: number,
+  newStatus: string
+): Promise<void> {
+  const [order] = await db
+    .select()
+    .from(orders)
+    .where(eq(orders.id, orderId))
+    .limit(1);
+
+  if (!order) {
+    console.error("sendOrderStatusEmail: commande introuvable", orderId);
+    return;
+  }
+
+  const [buyer] = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, order.buyer_id))
+    .limit(1);
+
+  const [seller] = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, order.seller_id))
+    .limit(1);
+
+  if (!buyer || !seller) {
+    console.error("sendOrderStatusEmail: buyer/seller introuvable");
+    return;
+  }
+
+  const sellerName = `${seller.first_name} ${seller.last_name}`;
+
+  const [payment] = await db
+    .select()
+    .from(payments)
+    .where(eq(payments.order_id, orderId))
+    .limit(1);
+
+  let tpl: { subject: string; htmlContent: string; textContent: string };
+
+  switch (newStatus) {
+    case "shipped":
+      tpl = orderShippedTemplate({
+        buyerFirstName: buyer.first_name,
+        orderId: order.id,
+        sellerName,
+        deliveryMethod: order.delivery_method,
+        trackingNumber: order.tracking_number,
+      });
+      break;
+
+    case "delivered":
+      tpl = orderDeliveredTemplate({
+        buyerFirstName: buyer.first_name,
+        orderId: order.id,
+        sellerName,
+      });
+      break;
+
+    case "cancelled":
+      tpl = orderCancelledTemplate({
+        buyerFirstName: buyer.first_name,
+        orderId: order.id,
+        sellerName,
+        totalPrice: order.total_price,
+        wasPaid: payment?.status === "succeeded",
+      });
+      break;
+
+    default:
+      // Pas d'email pour pending/confirmed
+      return;
+  }
+
+  await sendEmail({
+    to: buyer.email,
+    toName: buyer.first_name,
+    subject: tpl.subject,
+    htmlContent: tpl.htmlContent,
+    textContent: tpl.textContent,
+  });
+
+  console.log(
+    `📧 Email statut "${newStatus}" commande #${orderId} envoyé à ${buyer.email}`
   );
 }

@@ -25,6 +25,12 @@ export const updateStatusSchema = z.object({
       errorMap: () => ({ message: "Statut invalide" }),
     }
   ),
+  // ✅ Numéro de suivi (optionnel, utilisé quand status = "shipped")
+  tracking_number: z
+    .string()
+    .max(255, "Le numéro de suivi est trop long")
+    .optional()
+    .nullable(),
 });
 
 export type CreateOrderInput = z.infer<typeof createOrderSchema>;

@@ -116,6 +116,7 @@ export const orders = pgTable("orders", {
   status: varchar("status", { length: 50 }).default("pending").notNull(),
   delivery_method: varchar("delivery_method", { length: 50 }).notNull(),
   delivery_address: text("delivery_address"),
+  tracking_number: varchar("tracking_number", { length: 255 }), // ← AJOUT
   created_at: timestamp("created_at").defaultNow(),
 });
 

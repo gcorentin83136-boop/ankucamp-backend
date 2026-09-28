@@ -3,7 +3,7 @@ import { db } from "../../db";
 import { orders, orderItems, products, payments, users } from "../../db/schema";
 import { AppError } from "../../errors/AppError";
 import { generateInvoiceNumber } from "../../emails/invoice";
-import { resendInvoiceEmail } from "./orders.emails";
+import { resendInvoiceEmail, sendOrderStatusEmail } from "./orders.emails";
 import type { CreateOrderInput } from "./orders.validation";
 
 // ============================================================
@@ -158,7 +158,8 @@ export async function createOrder(buyerId: number, input: CreateOrderInput) {
 export async function updateOrderStatus(
   orderId: number,
   userId: number,
-  newStatus: string
+  newStatus: string,
+  trackingNumber?: string | null
 ) {
   const order = await getOrderById(orderId);
   if (!order) {
@@ -191,11 +192,28 @@ export async function updateOrderStatus(
     }
   }
 
+  // Prépare les champs à mettre à jour
+  const updates: { status: string; tracking_number?: string | null } = {
+    status: newStatus,
+  };
+
+  // Si on passe à "shipped" et qu'un tracking_number est fourni, on le stocke
+  if (newStatus === "shipped" && trackingNumber !== undefined) {
+    updates.tracking_number = trackingNumber;
+  }
+
   const [updated] = await db
     .update(orders)
-    .set({ status: newStatus })
+    .set(updates)
     .where(eq(orders.id, orderId))
     .returning();
+
+  // 📧 Envoie un email au buyer selon le nouveau statut (fire & forget)
+  if (["shipped", "delivered", "cancelled"].includes(newStatus)) {
+    sendOrderStatusEmail(orderId, newStatus).catch((err) =>
+      console.error("❌ Erreur envoi email statut:", err)
+    );
+  }
 
   return updated;
 }

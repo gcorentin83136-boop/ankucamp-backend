@@ -83,7 +83,13 @@ export async function updateStatus(req: AuthRequest, res: Response) {
     throw new AppError("Données invalides", 400, parsed.error.flatten().fieldErrors);
   }
 
-  const order = await updateOrderStatus(id, req.user.id, parsed.data.status);
+  const order = await updateOrderStatus(
+    id,
+    req.user.id,
+    parsed.data.status,
+    parsed.data.tracking_number
+  );
+
   return res.json({ success: true, message: "Statut mis à jour", order });
 }
 
