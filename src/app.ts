@@ -14,7 +14,8 @@ import messagesRoutes from "./core/api/messages/messages.routes";
 import notificationsRoutes from "./core/api/notifications/notifications.routes";
 import uploadsRoutes from "./core/api/uploads/uploads.routes";
 import paymentsRoutes from "./core/api/payments/payments.routes";
-import reviewsRoutes from "./core/api/reviews/reviews.routes"; // ← AJOUT
+import reviewsRoutes from "./core/api/reviews/reviews.routes";
+import postsRoutes from "./core/api/posts/posts.routes";
 
 import { errorHandler } from "./core/errors/errorHandler";
 import { globalLimiter } from "./config/security";
@@ -61,9 +62,6 @@ app.use(
 // ===============
 // STRIPE WEBHOOK (AVANT express.json !)
 // ===============
-// Le webhook Stripe a besoin du body en RAW (Buffer) pour vérifier la signature.
-// Donc on le monte AVANT express.json() pour qu'il ne soit PAS parsé.
-// Route montée ici : POST /payments/webhook
 app.use("/payments/webhook", raw({ type: "application/json" }));
 
 // ===============
@@ -113,7 +111,8 @@ app.use("/orders", ordersRoutes);
 app.use("/messages", messagesRoutes);
 app.use("/notifications", notificationsRoutes);
 app.use("/uploads", uploadsRoutes);
-app.use("/reviews", reviewsRoutes); // ← AJOUT
+app.use("/reviews", reviewsRoutes);
+app.use("/posts", postsRoutes);
 
 // ===============
 // 404

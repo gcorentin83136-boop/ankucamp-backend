@@ -6,6 +6,7 @@ import { signToken } from "../../security/jwt";
 import { AppError } from "../../errors/AppError";
 import type { RegisterInput, LoginInput } from "./auth.validation";
 import { sendActivationEmail, sendResetPasswordEmail } from "./auth.emails";
+import { generateUsername } from "../../utils/username";
 
 const SALT_ROUNDS = 10;
 
@@ -14,14 +15,20 @@ const publicColumns = {
   id: users.id,
   first_name: users.first_name,
   last_name: users.last_name,
+  username: users.username,
   email: users.email,
   birth_year: users.birth_year,
   address: users.address,
   city: users.city,
   postal_code: users.postal_code,
   country: users.country,
-  provider: users.provider,
   avatar_url: users.avatar_url,
+  cover_url: users.cover_url,
+  bio: users.bio,
+  website: users.website,
+  location: users.location,
+  is_private: users.is_private,
+  provider: users.provider,
   role: users.role,
   email_verified: users.email_verified,
   created_at: users.created_at,
@@ -47,10 +54,17 @@ export async function registerUser(input: RegisterInput) {
   // Insertion (on ignore password pour ne pas le stocker en clair)
   const { password: _password, ...dataWithoutPassword } = input;
 
+  // Générer un username unique
+  const username = await generateUsername(
+    input.first_name,
+    input.last_name
+  );
+
   const [created] = await db
     .insert(users)
     .values({
       ...dataWithoutPassword,
+      username,
       password_hash,
       provider: "local",
     })
@@ -93,6 +107,7 @@ export async function loginUser(input: LoginInput) {
       id: user.id,
       first_name: user.first_name,
       last_name: user.last_name,
+      username: user.username,
       email: user.email,
       role: user.role,
       avatar_url: user.avatar_url,

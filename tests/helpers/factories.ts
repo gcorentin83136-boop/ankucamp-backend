@@ -10,6 +10,7 @@ import { signToken } from "../../src/core/security/jwt";
 interface CreateUserOptions {
   first_name?: string;
   last_name?: string;
+  username?: string;
   email: string;
   password?: string;
   role?: "particulier" | "professionnel";
@@ -34,11 +35,15 @@ export async function createUser(options: CreateUserOptions) {
 
   const password_hash = await bcrypt.hash(password, 10);
 
+  // Génère un username unique basé sur le timestamp + random
+  const defaultUsername = `test_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+
   const [user] = await testDb
     .insert(users)
     .values({
       first_name,
       last_name,
+      username: options.username ?? defaultUsername,
       email,
       password_hash,
       role,
@@ -59,6 +64,7 @@ export async function createUser(options: CreateUserOptions) {
   return {
     id: user.id,
     email: user.email,
+    username: user.username,
     role: user.role,
     password,
     token,

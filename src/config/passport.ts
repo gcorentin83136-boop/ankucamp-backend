@@ -4,13 +4,19 @@ import { eq } from "drizzle-orm";
 import { db } from "../core/db";
 import { users } from "../core/db/schema";
 import { env } from "./env";
+import { generateUsername } from "../core/utils/username";
 
 // ============================================================
 // HELPER : adapte un user DB au type Express.User (= TokenPayload)
 // ============================================================
 type UserRole = "professionnel" | "particulier";
 
-function toExpressUser(user: { id: number; email: string; role: string; [key: string]: unknown }) {
+function toExpressUser(user: {
+  id: number;
+  email: string;
+  role: string;
+  [key: string]: unknown;
+}) {
   return {
     ...user,
     role: user.role as UserRole,
@@ -63,11 +69,18 @@ passport.use(
         }
 
         // 3. Cas 2 : nouvel utilisateur → on le crée
+        const firstName = profile.name?.givenName ?? "Utilisateur";
+        const lastName = profile.name?.familyName ?? "Google";
+
+        // Générer un username unique
+        const username = await generateUsername(firstName, lastName);
+
         const [created] = await db
           .insert(users)
           .values({
-            first_name: profile.name?.givenName ?? "Utilisateur",
-            last_name: profile.name?.familyName ?? "Google",
+            first_name: firstName,
+            last_name: lastName,
+            username,
             email,
             password_hash: null,
             provider: "google",
