@@ -26,6 +26,26 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
+    # Variables communes à TOUS les steps
+    env:
+      NODE_ENV: test
+      PORT: 3001
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/ankucamp_test
+      DATABASE_URL_TEST: postgres://postgres:postgres@localhost:5432/ankucamp_test
+      JWT_SECRET: test-secret-for-ci-only-at-least-16-chars
+      CLOUDINARY_CLOUD_NAME: ${{ secrets.CLOUDINARY_CLOUD_NAME }}
+      CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
+      CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
+      GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+      GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+      GOOGLE_CALLBACK_URL: http://localhost:3001/auth/google/callback
+      STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+      STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+      BREVO_API_KEY: ${{ secrets.BREVO_API_KEY }}
+      EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+      EMAIL_FROM_NAME: ${{ secrets.EMAIL_FROM_NAME }}
+      PLATFORM_FEE_PERCENT: ${{ secrets.PLATFORM_FEE_PERCENT }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -34,6 +54,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
+          cache: "npm"
 
       - name: Install dependencies
         run: npm ci
@@ -42,31 +63,7 @@ jobs:
         run: npx tsc --noEmit
 
       - name: Push DB schema
-        env:
-          DATABASE_URL: postgres://postgres:postgres@localhost:5432/ankucamp_test
-          CLOUDINARY_CLOUD_NAME: ${{ secrets.CLOUDINARY_CLOUD_NAME }}
-          CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
-          CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
-          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
-          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
-          GOOGLE_CALLBACK_URL: http://localhost:3001/auth/google/callback
-          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
-          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
         run: npx drizzle-kit push --force
 
       - name: Run tests
-        env:
-          NODE_ENV: test
-          DATABASE_URL: postgres://postgres:postgres@localhost:5432/ankucamp_test
-          DATABASE_URL_TEST: postgres://postgres:postgres@localhost:5432/ankucamp_test
-          JWT_SECRET: test-secret-for-ci-only-at-least-16-chars
-          PORT: 3001
-          CLOUDINARY_CLOUD_NAME: ${{ secrets.CLOUDINARY_CLOUD_NAME }}
-          CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
-          CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
-          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
-          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
-          GOOGLE_CALLBACK_URL: http://localhost:3001/auth/google/callback
-          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
-          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
         run: npm test
