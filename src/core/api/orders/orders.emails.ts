@@ -3,6 +3,7 @@ import { db } from "../../db";
 import { orders, orderItems, products, users, payments } from "../../db/schema";
 import { sendEmail } from "../../emails/email.service";
 import { orderConfirmationTemplate } from "../../emails/templates/orderConfirmation";
+import { sellerNewOrderTemplate } from "../../emails/templates/sellerNewOrder";
 import { generateInvoicePdf, generateInvoiceNumber } from "../../emails/invoice";
 import { env } from "../../../config/env";
 import { cloudinary } from "../../../config/cloudinary";
@@ -40,6 +41,7 @@ function uploadPdfToCloudinary(
 /**
  * Envoie l'email de confirmation de commande avec la facture PDF en pièce jointe.
  * Upload aussi la facture sur Cloudinary et stocke l'URL dans payments.invoice_url.
+ * Envoie également un email de notification au vendeur.
  * Appelé après un paiement Stripe réussi (webhook).
  */
 export async function sendOrderConfirmationEmail(orderId: number): Promise<void> {
@@ -87,7 +89,15 @@ export async function sendOrderConfirmationEmail(orderId: number): Promise<void>
     .where(eq(payments.order_id, orderId))
     .limit(1);
 
+  const itemsMapped = items.map((i) => ({
+    productName: i.productName ?? "Produit",
+    quantity: i.quantity,
+    unitPrice: i.unitPrice,
+  }));
+
+  // ============================================================
   // 1. Génération du PDF en mémoire
+  // ============================================================
   const invoiceNumber = generateInvoiceNumber(orderId);
   const pdfBuffer = await generateInvoicePdf({
     invoiceNumber,
@@ -97,11 +107,7 @@ export async function sendOrderConfirmationEmail(orderId: number): Promise<void>
     buyerEmail: buyer.email,
     sellerName: `${seller.first_name} ${seller.last_name}`,
     sellerEmail: seller.email,
-    items: items.map((i) => ({
-      productName: i.productName ?? "Produit",
-      quantity: i.quantity,
-      unitPrice: i.unitPrice,
-    })),
+    items: itemsMapped,
     totalPrice: order.total_price,
     deliveryMethod: order.delivery_method,
     deliveryAddress: order.delivery_address,
@@ -111,7 +117,9 @@ export async function sendOrderConfirmationEmail(orderId: number): Promise<void>
     platformFeePercent: env.PLATFORM_FEE_PERCENT,
   });
 
+  // ============================================================
   // 2. Upload Cloudinary (n'échoue pas l'envoi email si erreur)
+  // ============================================================
   try {
     const invoiceUrl = await uploadPdfToCloudinary(
       pdfBuffer,
@@ -129,28 +137,25 @@ export async function sendOrderConfirmationEmail(orderId: number): Promise<void>
     console.error("❌ Erreur upload Cloudinary facture:", err);
   }
 
-  // 3. Template email
-  const { subject, htmlContent, textContent } = orderConfirmationTemplate({
+  // ============================================================
+  // 3. Email ACHETEUR : confirmation + facture PDF
+  // ============================================================
+  const buyerTpl = orderConfirmationTemplate({
     buyerFirstName: buyer.first_name,
     orderId: order.id,
     totalPrice: order.total_price,
     deliveryMethod: order.delivery_method,
     deliveryAddress: order.delivery_address,
-    items: items.map((i) => ({
-      productName: i.productName ?? "Produit",
-      quantity: i.quantity,
-      unitPrice: i.unitPrice,
-    })),
+    items: itemsMapped,
     sellerName: `${seller.first_name} ${seller.last_name}`,
   });
 
-  // 4. Envoi email avec pièce jointe
   await sendEmail({
     to: buyer.email,
     toName: buyer.first_name,
-    subject,
-    htmlContent,
-    textContent,
+    subject: buyerTpl.subject,
+    htmlContent: buyerTpl.htmlContent,
+    textContent: buyerTpl.textContent,
     attachments: [
       {
         name: `facture-${invoiceNumber}.pdf`,
@@ -160,4 +165,38 @@ export async function sendOrderConfirmationEmail(orderId: number): Promise<void>
   });
 
   console.log(`📧 Email confirmation commande #${orderId} envoyé à ${buyer.email}`);
+
+  // ============================================================
+  // 4. Email VENDEUR : nouvelle commande
+  // ============================================================
+  try {
+    const sellerTpl = sellerNewOrderTemplate({
+      sellerFirstName: seller.first_name,
+      orderId: order.id,
+      totalPrice: order.total_price,
+      sellerAmount: payment?.seller_amount ?? order.total_price,
+      applicationFeeAmount: payment?.application_fee_amount ?? "0",
+      platformFeePercent: env.PLATFORM_FEE_PERCENT,
+      buyerName: `${buyer.first_name} ${buyer.last_name}`,
+      buyerEmail: buyer.email,
+      deliveryMethod: order.delivery_method,
+      deliveryAddress: order.delivery_address,
+      items: itemsMapped,
+    });
+
+    await sendEmail({
+      to: seller.email,
+      toName: seller.first_name,
+      subject: sellerTpl.subject,
+      htmlContent: sellerTpl.htmlContent,
+      textContent: sellerTpl.textContent,
+    });
+
+    console.log(
+      `📧 Email nouvelle commande #${orderId} envoyé au vendeur ${seller.email}`
+    );
+  } catch (err) {
+    // On ne bloque PAS le flux si l'email vendeur échoue
+    console.error("❌ Erreur envoi email vendeur:", err);
+  }
 }
