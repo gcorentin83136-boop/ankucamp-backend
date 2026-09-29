@@ -20,6 +20,9 @@ import friendsRoutes from "./core/api/friends/friends.routes";
 import followsRoutes from "./core/api/follows/follows.routes";
 import shareRoutes from "./core/api/share/share.routes";
 import settingsRoutes from "./core/api/settings/settings.routes";
+import conversationsRoutes, {
+  messagesRouter,
+} from "./core/api/conversations/conversations.routes";
 
 import { errorHandler } from "./core/errors/errorHandler";
 import { globalLimiter } from "./config/security";
@@ -113,6 +116,7 @@ app.use("/shops", shopsRoutes);
 app.use("/products", productsRoutes);
 app.use("/orders", ordersRoutes);
 app.use("/messages", messagesRoutes);
+app.use("/messages-v2", messagesRouter);
 app.use("/notifications", notificationsRoutes);
 app.use("/uploads", uploadsRoutes);
 app.use("/reviews", reviewsRoutes);
@@ -121,6 +125,7 @@ app.use("/friends", friendsRoutes);
 app.use("/follows", followsRoutes);
 app.use("/share", shareRoutes);
 app.use("/settings", settingsRoutes);
+app.use("/conversations", conversationsRoutes);
 
 // ===============
 // 404
