@@ -165,7 +165,7 @@ export const contactRequests = pgTable("contact_requests", {
 });
 
 // ============================================================
-// MESSAGERIE (NOUVEAU SYSTÈME)
+// MESSAGERIE
 // ============================================================
 
 // ========================
@@ -203,22 +203,14 @@ export const conversationParticipants = pgTable(
 );
 
 // ========================
-// MESSAGES (refactoré)
+// MESSAGES
 // ========================
 export const messages = pgTable("messages", {
   id: serial("id").primaryKey(),
   sender_id: integer("sender_id").notNull(),
-
-  // Nouveau système (nullable pour compat)
   conversation_id: integer("conversation_id"),
-
-  // Ancien système (à déprécier)
   type: varchar("type", { length: 20 }).default("text").notNull(),
-  // 'text' | 'image' | 'file' | 'system' | 'public' | 'group' | 'support'
-  group_id: integer("group_id"),
-  receiver_id: integer("receiver_id"),
-
-  // Contenu
+  // 'text' | 'image' | 'file' | 'system'
   content: text("content").notNull(),
   media_url: text("media_url"),
 

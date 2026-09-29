@@ -10,7 +10,6 @@ import healthRoutes from "./core/api/health/health.routes";
 import shopsRoutes from "./core/api/shops/shops.routes";
 import productsRoutes from "./core/api/products/products.routes";
 import ordersRoutes from "./core/api/orders/orders.routes";
-import messagesRoutes from "./core/api/messages/messages.routes";
 import notificationsRoutes from "./core/api/notifications/notifications.routes";
 import uploadsRoutes from "./core/api/uploads/uploads.routes";
 import paymentsRoutes from "./core/api/payments/payments.routes";
@@ -23,6 +22,7 @@ import settingsRoutes from "./core/api/settings/settings.routes";
 import conversationsRoutes, {
   messagesRouter,
 } from "./core/api/conversations/conversations.routes";
+import searchRoutes from "./core/api/search/search.routes";
 
 import { errorHandler } from "./core/errors/errorHandler";
 import { globalLimiter } from "./config/security";
@@ -115,7 +115,6 @@ app.use("/users", usersRoutes);
 app.use("/shops", shopsRoutes);
 app.use("/products", productsRoutes);
 app.use("/orders", ordersRoutes);
-app.use("/messages", messagesRoutes);
 app.use("/messages-v2", messagesRouter);
 app.use("/notifications", notificationsRoutes);
 app.use("/uploads", uploadsRoutes);
@@ -126,6 +125,7 @@ app.use("/follows", followsRoutes);
 app.use("/share", shareRoutes);
 app.use("/settings", settingsRoutes);
 app.use("/conversations", conversationsRoutes);
+app.use("/search", searchRoutes);
 
 // ===============
 // 404
