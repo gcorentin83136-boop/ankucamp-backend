@@ -13,46 +13,32 @@ import {
 // ========================
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
-
-  // Identité
   first_name: varchar("first_name", { length: 100 }).notNull(),
   last_name: varchar("last_name", { length: 100 }).notNull(),
   username: varchar("username", { length: 50 }).notNull().unique(),
   email: varchar("email", { length: 255 }).notNull().unique(),
   birth_year: integer("birth_year"),
-
-  // Adresse postale
   address: varchar("address", { length: 255 }),
   city: varchar("city", { length: 100 }),
   postal_code: varchar("postal_code", { length: 20 }),
   country: varchar("country", { length: 100 }).default("France"),
-
-  // Profil public
   avatar_url: text("avatar_url"),
   cover_url: text("cover_url"),
   bio: text("bio"),
   website: varchar("website", { length: 255 }),
   location: varchar("location", { length: 255 }),
   is_private: integer("is_private").default(0).notNull(),
-
-  // Auth
   password_hash: varchar("password_hash", { length: 255 }),
   provider: varchar("provider", { length: 50 }).default("local").notNull(),
   provider_id: varchar("provider_id", { length: 255 }),
-
-  // Stripe Connect
   stripe_account_id: varchar("stripe_account_id", { length: 255 }),
   stripe_account_status: varchar("stripe_account_status", { length: 50 })
     .default("not_connected")
     .notNull(),
-
-  // Tokens
   activation_token: varchar("activation_token", { length: 255 }),
   activation_token_expires: timestamp("activation_token_expires"),
   reset_password_token: varchar("reset_password_token", { length: 255 }),
   reset_password_token_expires: timestamp("reset_password_token_expires"),
-
-  // Méta
   role: varchar("role", { length: 50 }).notNull(),
   email_verified: integer("email_verified").default(0).notNull(),
   created_at: timestamp("created_at").defaultNow(),
@@ -140,7 +126,7 @@ export const orderItems = pgTable("order_items", {
 });
 
 // ========================
-// REVIEWS (avis clients)
+// REVIEWS
 // ========================
 export const reviews = pgTable("reviews", {
   id: serial("id").primaryKey(),
@@ -156,7 +142,7 @@ export const reviews = pgTable("reviews", {
 });
 
 // ========================
-// REVIEW REPORTS (signalements)
+// REVIEW REPORTS
 // ========================
 export const reviewReports = pgTable("review_reports", {
   id: serial("id").primaryKey(),
@@ -178,16 +164,92 @@ export const contactRequests = pgTable("contact_requests", {
   created_at: timestamp("created_at").defaultNow(),
 });
 
+// ============================================================
+// MESSAGERIE (NOUVEAU SYSTÈME)
+// ============================================================
+
 // ========================
-// MESSAGES
+// CONVERSATIONS
+// ========================
+export const conversations = pgTable("conversations", {
+  id: serial("id").primaryKey(),
+  type: varchar("type", { length: 20 }).default("direct").notNull(),
+  // 'direct' | 'group'
+  name: varchar("name", { length: 255 }), // Nom du groupe (null pour direct)
+  avatar_url: text("avatar_url"), // Avatar du groupe
+  created_by: integer("created_by").notNull(),
+  last_message_at: timestamp("last_message_at"),
+  last_message_preview: varchar("last_message_preview", { length: 200 }),
+  created_at: timestamp("created_at").defaultNow(),
+});
+
+// ========================
+// CONVERSATION PARTICIPANTS
+// ========================
+export const conversationParticipants = pgTable(
+  "conversation_participants",
+  {
+    id: serial("id").primaryKey(),
+    conversation_id: integer("conversation_id").notNull(),
+    user_id: integer("user_id").notNull(),
+    role: varchar("role", { length: 20 }).default("member").notNull(),
+    // 'member' | 'admin'
+    joined_at: timestamp("joined_at").defaultNow(),
+    left_at: timestamp("left_at"),
+    last_read_at: timestamp("last_read_at"),
+    last_read_message_id: integer("last_read_message_id"),
+    muted: integer("muted").default(0).notNull(),
+  }
+);
+
+// ========================
+// MESSAGES (refactoré)
 // ========================
 export const messages = pgTable("messages", {
   id: serial("id").primaryKey(),
   sender_id: integer("sender_id").notNull(),
-  type: varchar("type", { length: 20 }).notNull(),
+
+  // Nouveau système (nullable pour compat)
+  conversation_id: integer("conversation_id"),
+
+  // Ancien système (à déprécier)
+  type: varchar("type", { length: 20 }).default("text").notNull(),
+  // 'text' | 'image' | 'file' | 'system' | 'public' | 'group' | 'support'
   group_id: integer("group_id"),
   receiver_id: integer("receiver_id"),
+
+  // Contenu
   content: text("content").notNull(),
+  media_url: text("media_url"),
+
+  // Réponse (quote)
+  reply_to_message_id: integer("reply_to_message_id"),
+
+  // Édition / suppression
+  edited_at: timestamp("edited_at"),
+  deleted_at: timestamp("deleted_at"),
+
+  created_at: timestamp("created_at").defaultNow(),
+});
+
+// ========================
+// MESSAGE READS (qui a lu quel message)
+// ========================
+export const messageReads = pgTable("message_reads", {
+  id: serial("id").primaryKey(),
+  message_id: integer("message_id").notNull(),
+  user_id: integer("user_id").notNull(),
+  read_at: timestamp("read_at").defaultNow().notNull(),
+});
+
+// ========================
+// MESSAGE REACTIONS (emoji)
+// ========================
+export const messageReactions = pgTable("message_reactions", {
+  id: serial("id").primaryKey(),
+  message_id: integer("message_id").notNull(),
+  user_id: integer("user_id").notNull(),
+  emoji: varchar("emoji", { length: 10 }).notNull(),
   created_at: timestamp("created_at").defaultNow(),
 });
 
@@ -220,12 +282,10 @@ export const payments = pgTable("payments", {
   amount_tva: decimal("amount_tva", { precision: 10, scale: 2 }).notNull(),
   amount_ttc: decimal("amount_ttc", { precision: 10, scale: 2 }).notNull(),
   tva_rate: decimal("tva_rate", { precision: 4, scale: 2 }).notNull(),
-
   seller_id: integer("seller_id"),
   seller_stripe_account_id: varchar("seller_stripe_account_id", { length: 255 }),
   application_fee_amount: decimal("application_fee_amount", { precision: 10, scale: 2 }),
   seller_amount: decimal("seller_amount", { precision: 10, scale: 2 }),
-
   status: varchar("status", { length: 50 }).default("pending").notNull(),
   invoice_url: text("invoice_url"),
   created_at: timestamp("created_at").defaultNow(),
@@ -235,9 +295,6 @@ export const payments = pgTable("payments", {
 // RÉSEAU SOCIAL
 // ============================================================
 
-// ========================
-// POSTS
-// ========================
 export const posts = pgTable("posts", {
   id: serial("id").primaryKey(),
   author_id: integer("author_id").notNull(),
@@ -253,9 +310,6 @@ export const posts = pgTable("posts", {
   updated_at: timestamp("updated_at").defaultNow(),
 });
 
-// ========================
-// POST LIKES
-// ========================
 export const postLikes = pgTable("post_likes", {
   id: serial("id").primaryKey(),
   user_id: integer("user_id").notNull(),
@@ -263,9 +317,6 @@ export const postLikes = pgTable("post_likes", {
   created_at: timestamp("created_at").defaultNow(),
 });
 
-// ========================
-// POST COMMENTS (2 niveaux)
-// ========================
 export const postComments = pgTable("post_comments", {
   id: serial("id").primaryKey(),
   post_id: integer("post_id").notNull(),
@@ -275,9 +326,6 @@ export const postComments = pgTable("post_comments", {
   created_at: timestamp("created_at").defaultNow(),
 });
 
-// ========================
-// POST SHARES
-// ========================
 export const postShares = pgTable("post_shares", {
   id: serial("id").primaryKey(),
   post_id: integer("post_id").notNull(),
@@ -285,9 +333,6 @@ export const postShares = pgTable("post_shares", {
   created_at: timestamp("created_at").defaultNow(),
 });
 
-// ========================
-// FRIENDSHIPS (amis)
-// ========================
 export const friendships = pgTable("friendships", {
   id: serial("id").primaryKey(),
   requester_id: integer("requester_id").notNull(),
@@ -297,9 +342,6 @@ export const friendships = pgTable("friendships", {
   responded_at: timestamp("responded_at"),
 });
 
-// ========================
-// FOLLOWS (suivre une boutique)
-// ========================
 export const follows = pgTable("follows", {
   id: serial("id").primaryKey(),
   follower_id: integer("follower_id").notNull(),
@@ -308,28 +350,19 @@ export const follows = pgTable("follows", {
 });
 
 // ============================================================
-// PARAMÈTRES UTILISATEUR
+// PARAMÈTRES
 // ============================================================
 
-// ========================
-// USER SETTINGS (préférences utilisateur)
-// ========================
 export const userSettings = pgTable("user_settings", {
   id: serial("id").primaryKey(),
   user_id: integer("user_id").notNull().unique(),
-
-  // Notifications email
   email_order_updates: integer("email_order_updates").default(1).notNull(),
   email_new_messages: integer("email_new_messages").default(1).notNull(),
   email_social_activity: integer("email_social_activity").default(1).notNull(),
   email_marketing: integer("email_marketing").default(0).notNull(),
-
-  // Notifications push (in-app / mobile)
   push_order_updates: integer("push_order_updates").default(1).notNull(),
   push_new_messages: integer("push_new_messages").default(1).notNull(),
   push_social_activity: integer("push_social_activity").default(1).notNull(),
-
-  // Confidentialité
   profile_visibility: varchar("profile_visibility", { length: 20 })
     .default("public")
     .notNull(),
@@ -339,50 +372,30 @@ export const userSettings = pgTable("user_settings", {
     .default("everyone")
     .notNull(),
   search_indexable: integer("search_indexable").default(1).notNull(),
-
-  // Préférences
   language: varchar("language", { length: 5 }).default("fr").notNull(),
   timezone: varchar("timezone", { length: 50 })
     .default("Europe/Paris")
     .notNull(),
-
   created_at: timestamp("created_at").defaultNow(),
   updated_at: timestamp("updated_at").defaultNow(),
 });
 
-// ========================
-// SHOP SETTINGS (paramètres boutique)
-// ========================
 export const shopSettings = pgTable("shop_settings", {
   id: serial("id").primaryKey(),
   shop_id: integer("shop_id").notNull().unique(),
-
-  // Mode vacances
   vacation_mode: integer("vacation_mode").default(0).notNull(),
   vacation_message: text("vacation_message"),
   vacation_until: timestamp("vacation_until"),
-
-  // Visibilité
   is_hidden: integer("is_hidden").default(0).notNull(),
-
-  // Retours
   accepts_returns: integer("accepts_returns").default(0).notNull(),
   return_days: integer("return_days").default(14).notNull(),
-
-  // Livraison
-  shipping_zones: text("shipping_zones"), // JSON
-
-  // Contact
+  shipping_zones: text("shipping_zones"),
   contact_phone: varchar("contact_phone", { length: 30 }),
   contact_email: varchar("contact_email", { length: 255 }),
-
   created_at: timestamp("created_at").defaultNow(),
   updated_at: timestamp("updated_at").defaultNow(),
 });
 
-// ========================
-// USER SESSIONS (sessions actives)
-// ========================
 export const userSessions = pgTable("user_sessions", {
   id: serial("id").primaryKey(),
   user_id: integer("user_id").notNull(),
@@ -395,9 +408,6 @@ export const userSessions = pgTable("user_sessions", {
   created_at: timestamp("created_at").defaultNow(),
 });
 
-// ========================
-// LEGAL ACCEPTANCES (RGPD : acceptations des documents légaux)
-// ========================
 export const legalAcceptances = pgTable("legal_acceptances", {
   id: serial("id").primaryKey(),
   user_id: integer("user_id").notNull(),
@@ -407,9 +417,6 @@ export const legalAcceptances = pgTable("legal_acceptances", {
   ip_address: varchar("ip_address", { length: 50 }),
 });
 
-// ========================
-// DATA EXPORT REQUESTS (RGPD : export des données)
-// ========================
 export const dataExportRequests = pgTable("data_export_requests", {
   id: serial("id").primaryKey(),
   user_id: integer("user_id").notNull(),
@@ -420,9 +427,6 @@ export const dataExportRequests = pgTable("data_export_requests", {
   expires_at: timestamp("expires_at"),
 });
 
-// ========================
-// ACCOUNT DELETION REQUESTS (RGPD : suppression compte)
-// ========================
 export const accountDeletionRequests = pgTable("account_deletion_requests", {
   id: serial("id").primaryKey(),
   user_id: integer("user_id").notNull(),
