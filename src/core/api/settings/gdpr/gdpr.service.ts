@@ -255,15 +255,22 @@ async function processDataExport(userId: number, requestId: number) {
       expiresAt,
     });
 
-    await sendEmail({
-      to: user.email,
-      toName: user.first_name,
-      subject: tpl.subject,
-      htmlContent: tpl.htmlContent,
-      textContent: tpl.textContent,
-    });
-
-    console.log(`📧 Email d'export envoyé à ${user.email}`);
+    // ✅ Envoi email non-bloquant (ne casse pas l'export si Brevo échoue)
+    try {
+      await sendEmail({
+        to: user.email,
+        toName: user.first_name,
+        subject: tpl.subject,
+        htmlContent: tpl.htmlContent,
+        textContent: tpl.textContent,
+      });
+      console.log(`📧 Email d'export envoyé à ${user.email}`);
+    } catch (emailErr) {
+      console.error(
+        `⚠️ Email d'export non envoyé (non-bloquant):`,
+        emailErr
+      );
+    }
   } catch (err) {
     console.error(`❌ Erreur processDataExport (request #${requestId}):`, err);
 
@@ -345,15 +352,22 @@ export async function requestAccountDeletion(
     cancelUrl,
   });
 
-  await sendEmail({
-    to: user.email,
-    toName: user.first_name,
-    subject: tpl.subject,
-    htmlContent: tpl.htmlContent,
-    textContent: tpl.textContent,
-  });
-
-  console.log(`📧 Email de suppression programmée envoyé à ${user.email}`);
+  // ✅ Envoi email non-bloquant (ne casse pas la suppression si Brevo échoue)
+  try {
+    await sendEmail({
+      to: user.email,
+      toName: user.first_name,
+      subject: tpl.subject,
+      htmlContent: tpl.htmlContent,
+      textContent: tpl.textContent,
+    });
+    console.log(`📧 Email de suppression programmée envoyé à ${user.email}`);
+  } catch (emailErr) {
+    console.error(
+      `⚠️ Email de suppression non envoyé (non-bloquant):`,
+      emailErr
+    );
+  }
 
   return created;
 }

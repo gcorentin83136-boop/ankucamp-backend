@@ -2,7 +2,7 @@
 // ANKUCAMP — Tests d'intégration HTTP du module Settings > GDPR
 // ============================================================
 
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import request from "supertest";
 import app from "../src/app";
 import { db } from "../src/core/db";
@@ -16,6 +16,11 @@ import {
 } from "../src/core/db/schema";
 import { eq, inArray, and } from "drizzle-orm";
 import bcrypt from "bcrypt";
+
+// ✅ MOCK : évite les appels réels à Brevo (instable en CI)
+vi.mock("../src/core/emails/email.service", () => ({
+  sendEmail: vi.fn().mockResolvedValue(undefined),
+}));
 
 // ============================================================
 // CONFIG
@@ -174,16 +179,12 @@ describe("Settings GDPR — POST /settings/gdpr/export", () => {
     expect(res.body.request.status).toBe("pending");
   });
 
-  // ✅ FIX : le traitement async peut avoir déjà changé le statut
-  // → on accepte 400 (déjà en cours) OU 202 (le traitement a fini/trop rapide)
+  // ✅ Le traitement async peut avoir déjà changé le statut
   it("rejette si un export est déjà en cours OU accepte si traitement terminé", async () => {
     const res = await request(app)
       .post("/settings/gdpr/export")
       .set(authHeader(tokenA));
 
-    // Le service vérifie `status === "pending"`.
-    // Comme `processDataExport` est async, le statut a pu passer à "processing"/"ready".
-    // → selon le timing, on obtient 400 (pending) ou 202 (pas pending).
     expect([400, 202]).toContain(res.status);
   });
 
@@ -239,7 +240,6 @@ describe("Settings GDPR — GET /settings/gdpr/export/status", () => {
 
 describe("Settings GDPR — POST /settings/gdpr/delete", () => {
   beforeAll(async () => {
-    // ✅ FIX : nettoyage obligatoire avant les tests
     await db
       .delete(accountDeletionRequests)
       .where(eq(accountDeletionRequests.user_id, userAId));
@@ -254,7 +254,6 @@ describe("Settings GDPR — POST /settings/gdpr/delete", () => {
   });
 
   it("crée une demande de suppression (201)", async () => {
-    // ✅ FIX : on s'assure qu'il n'y a PAS de demande pending
     await db
       .delete(accountDeletionRequests)
       .where(eq(accountDeletionRequests.user_id, userAId));
