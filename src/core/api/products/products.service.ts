@@ -1,6 +1,6 @@
-import { eq } from "drizzle-orm";
+import { eq, notInArray } from "drizzle-orm";
 import { db } from "../../db";
-import { products, shops } from "../../db/schema";
+import { products, shops, shopSettings } from "../../db/schema";
 import { AppError } from "../../errors/AppError";
 import type {
   CreateProductInput,
@@ -45,12 +45,36 @@ async function assertProductOwnership(productId: number, userId: number) {
   return product;
 }
 
+/**
+ * Renvoie la liste des shop_ids masqués.
+ */
+async function getHiddenShopIds(): Promise<number[]> {
+  const rows = await db
+    .select({ shop_id: shopSettings.shop_id })
+    .from(shopSettings)
+    .where(eq(shopSettings.is_hidden, 1));
+
+  return rows.map((r) => r.shop_id);
+}
+
 // ============================================================
 // CRUD
 // ============================================================
 
+/**
+ * Liste tous les produits dont la boutique n'est PAS masquée.
+ */
 export async function getAllProducts() {
-  return db.select().from(products);
+  const hiddenIds = await getHiddenShopIds();
+
+  if (hiddenIds.length === 0) {
+    return db.select().from(products);
+  }
+
+  return db
+    .select()
+    .from(products)
+    .where(notInArray(products.shop_id, hiddenIds));
 }
 
 export async function getProductsByShop(shopId: number) {

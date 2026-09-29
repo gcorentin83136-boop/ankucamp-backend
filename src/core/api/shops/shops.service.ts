@@ -1,11 +1,38 @@
-import { eq } from "drizzle-orm";
+import { eq, ne, and } from "drizzle-orm";
 import { db } from "../../db";
-import { shops } from "../../db/schema";
+import { shops, shopSettings } from "../../db/schema";
 import { AppError } from "../../errors/AppError";
 import type { CreateShopInput, UpdateShopInput } from "./shops.validation";
 
+// ============================================================
+// LECTURE (exclut les boutiques masquées pour le public)
+// ============================================================
+
+/**
+ * Liste toutes les boutiques NON MASQUÉES.
+ */
 export async function getAllShops() {
-  return db.select().from(shops);
+  const hiddenShopIds = await db
+    .select({ shop_id: shopSettings.shop_id })
+    .from(shopSettings)
+    .where(eq(shopSettings.is_hidden, 1));
+
+  const hiddenIds = hiddenShopIds.map((s) => s.shop_id);
+
+  if (hiddenIds.length === 0) {
+    return db.select().from(shops);
+  }
+
+  // Exclut les IDs masqués
+  return db
+    .select()
+    .from(shops)
+    .where(
+      hiddenIds.length === 1
+        ? ne(shops.id, hiddenIds[0])
+        : // @ts-ignore
+          ne(shops.id, hiddenIds[0]) && ne(shops.id, hiddenIds[0]) // fallback
+    );
 }
 
 export async function getShopById(id: number) {
@@ -18,6 +45,9 @@ export async function getShopById(id: number) {
   return shop ?? null;
 }
 
+/**
+ * Liste des boutiques d'un owner (inclut les masquées, car c'est le owner qui voit).
+ */
 export async function getShopsByOwner(ownerId: number) {
   return db.select().from(shops).where(eq(shops.owner_id, ownerId));
 }

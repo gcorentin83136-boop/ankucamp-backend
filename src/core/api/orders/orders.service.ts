@@ -9,6 +9,7 @@ import {
   notifyOrderDelivered,
   notifyOrderCancelled,
 } from "../../notifications/notifications.helper";
+import { isShopHidden, isShopOnVacation } from "../settings/shop/shop.service";
 import type { CreateOrderInput } from "./orders.validation";
 
 // ============================================================
@@ -75,7 +76,7 @@ export async function getOrderById(id: number) {
 }
 
 // ============================================================
-// CRÉATION
+// CRÉATION (avec blocage vacances / boutique masquée)
 // ============================================================
 
 export async function createOrder(buyerId: number, input: CreateOrderInput) {
@@ -94,6 +95,29 @@ export async function createOrder(buyerId: number, input: CreateOrderInput) {
 
   if (productsFound.length !== productIds.length) {
     throw new AppError("Un ou plusieurs produits sont introuvables", 404);
+  }
+
+  // ============================================================
+  // Vérification : boutiques masquées ou en vacances
+  // ============================================================
+  const shopIds = [...new Set(productsFound.map((p) => p.shop_id))];
+
+  for (const shopId of shopIds) {
+    const hidden = await isShopHidden(shopId);
+    if (hidden) {
+      throw new AppError(
+        "Impossible de commander : une des boutiques est temporairement indisponible",
+        403
+      );
+    }
+
+    const onVacation = await isShopOnVacation(shopId);
+    if (onVacation) {
+      throw new AppError(
+        "Impossible de commander : une des boutiques est actuellement en vacances",
+        403
+      );
+    }
   }
 
   let totalPrice = 0;
@@ -197,7 +221,6 @@ export async function updateOrderStatus(
     }
   }
 
-  // Prépare les champs à mettre à jour
   const updates: {
     status: string;
     tracking_number?: string | null;
@@ -206,12 +229,10 @@ export async function updateOrderStatus(
     status: newStatus,
   };
 
-  // Si on passe à "shipped" et qu'un tracking_number est fourni, on le stocke
   if (newStatus === "shipped" && trackingNumber !== undefined) {
     updates.tracking_number = trackingNumber;
   }
 
-  // Si on passe à "delivered", on enregistre la date (utile pour scheduler J+3)
   if (newStatus === "delivered") {
     updates.delivered_at = new Date();
   }
@@ -222,18 +243,14 @@ export async function updateOrderStatus(
     .where(eq(orders.id, orderId))
     .returning();
 
-  // ============================================================
-  // 📧 Email au buyer (fire & forget)
-  // ============================================================
+  // 📧 Email au buyer
   if (["shipped", "delivered", "cancelled"].includes(newStatus)) {
     sendOrderStatusEmail(orderId, newStatus).catch((err) =>
       console.error("❌ Erreur envoi email statut:", err)
     );
   }
 
-  // ============================================================
-  // 🔔 Notifications in-app (fire & forget)
-  // ============================================================
+  // 🔔 Notifications in-app
   try {
     switch (newStatus) {
       case "shipped":
@@ -288,20 +305,10 @@ export async function deleteOrder(orderId: number, userId: number) {
 // RENVOI FACTURE (feature "1 clic")
 // ============================================================
 
-/**
- * Renvoie la facture PDF de la commande à un destinataire selon le rôle.
- *
- * Règles :
- * - L'ACHETEUR peut se renvoyer la facture à lui-même
- * - Le VENDEUR peut envoyer la facture à l'acheteur
- * - Dans tous les cas, le destinataire final est l'ACHETEUR (buyer)
- * - Bloqué si la commande n'a pas été payée (pas d'invoice_url)
- */
 export async function resendInvoiceService(
   orderId: number,
   userId: number
 ): Promise<{ sentTo: string; invoiceNumber: string }> {
-  // 1. Charger la commande
   const [order] = await db
     .select()
     .from(orders)
@@ -312,12 +319,10 @@ export async function resendInvoiceService(
     throw new AppError("Commande introuvable", 404);
   }
 
-  // 2. Vérifier que l'utilisateur est buyer OU seller
   if (order.buyer_id !== userId && order.seller_id !== userId) {
     throw new AppError("Vous n'avez pas accès à cette facture", 403);
   }
 
-  // 3. Vérifier que la commande est payée
   const [payment] = await db
     .select()
     .from(payments)
@@ -331,7 +336,6 @@ export async function resendInvoiceService(
     );
   }
 
-  // 4. Charger l'acheteur (destinataire final dans tous les cas)
   const [buyer] = await db
     .select()
     .from(users)
@@ -342,7 +346,6 @@ export async function resendInvoiceService(
     throw new AppError("Acheteur introuvable", 404);
   }
 
-  // 5. Envoyer la facture à l'acheteur
   await resendInvoiceEmail(order.id, buyer.email, buyer.first_name);
 
   const invoiceNumber = generateInvoiceNumber(order.id);
