@@ -98,10 +98,12 @@ export async function getAll(req: Request, res: Response) {
     );
   }
 
+  const { limit, offset, search } = parsed.data;
+
   const list =
-    parsed.data.search && parsed.data.search.trim() !== ""
+    search && search.trim() !== ""
       ? await searchUsers(parsed.data)
-      : await getAllUsers();
+      : await getAllUsers(limit, offset);
 
   return res.json({ success: true, count: list.length, users: list });
 }

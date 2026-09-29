@@ -58,8 +58,16 @@ export async function getUserByUsername(username: string) {
   return user ?? null;
 }
 
-export async function getAllUsers() {
-  return db.select(publicColumns).from(users);
+/**
+ * Liste paginée des users.
+ */
+export async function getAllUsers(limit = 50, offset = 0) {
+  return db
+    .select(publicColumns)
+    .from(users)
+    .orderBy(desc(users.created_at))
+    .limit(limit)
+    .offset(offset);
 }
 
 /**

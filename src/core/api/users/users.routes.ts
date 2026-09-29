@@ -1,5 +1,8 @@
 import { Router } from "express";
-import { authMiddleware } from "../../middlewares/auth.middleware";
+import {
+  authMiddleware,
+  authOptionalMiddleware,
+} from "../../middlewares/auth.middleware";
 import { asyncHandler } from "../../errors/asyncHandler";
 import {
   getMe,
@@ -33,7 +36,9 @@ router.get("/u/:username", asyncHandler(getByUsername));
 
 // Stats + amis d'un user
 router.get("/:id/stats", asyncHandler(getStats));
-router.get("/:id/friends", asyncHandler(getFriends));
+
+// Amis : auth optionnelle (profil privé → seul le propriétaire voit)
+router.get("/:id/friends", authOptionalMiddleware, asyncHandler(getFriends));
 
 // Route dynamique générique EN DERNIER
 router.get("/:id", asyncHandler(getOne));
