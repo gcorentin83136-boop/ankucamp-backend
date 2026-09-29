@@ -26,7 +26,6 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
-    # Variables communes à TOUS les steps
     env:
       NODE_ENV: test
       PORT: 3001
@@ -64,6 +63,11 @@ jobs:
 
       - name: Push DB schema
         run: npx drizzle-kit push --force
+
+      - name: Enable PostgreSQL extensions (unaccent)
+        run: |
+          PGPASSWORD=postgres psql -h localhost -U postgres -d ankucamp_test -c "CREATE EXTENSION IF NOT EXISTS unaccent;"
+          PGPASSWORD=postgres psql -h localhost -U postgres -d ankucamp_test -c "SELECT extname FROM pg_extension WHERE extname = 'unaccent';"
 
       - name: Run tests
         run: npm test
