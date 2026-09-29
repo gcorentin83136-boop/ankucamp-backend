@@ -20,7 +20,7 @@ import followsRoutes from "./core/api/follows/follows.routes";
 import shareRoutes from "./core/api/share/share.routes";
 import settingsRoutes from "./core/api/settings/settings.routes";
 import conversationsRoutes, {
-  messagesRouter,
+  messagesRouter as messagesApi,
 } from "./core/api/conversations/conversations.routes";
 import searchRoutes from "./core/api/search/search.routes";
 
@@ -115,7 +115,7 @@ app.use("/users", usersRoutes);
 app.use("/shops", shopsRoutes);
 app.use("/products", productsRoutes);
 app.use("/orders", ordersRoutes);
-app.use("/messages-v2", messagesRouter);
+app.use("/messages", messagesApi);
 app.use("/notifications", notificationsRoutes);
 app.use("/uploads", uploadsRoutes);
 app.use("/reviews", reviewsRoutes);

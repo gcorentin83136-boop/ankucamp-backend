@@ -15,6 +15,7 @@ import {
   conversations,
   conversationParticipants,
   messages,
+  messageReactions,
 } from "../src/core/db/schema";
 import { eq, inArray } from "drizzle-orm";
 import bcrypt from "bcrypt";
@@ -245,6 +246,12 @@ afterAll(async () => {
       const ids = rows.map((r) => r.id);
 
       if (ids.length > 0) {
+        // ✅ FIX : supprime d'abord les réactions liées aux messages
+        await db
+          .delete(messageReactions)
+          .where(inArray(messageReactions.message_id, ids));
+
+        // Puis les messages
         await db.delete(messages).where(inArray(messages.id, ids));
       }
 
@@ -416,12 +423,19 @@ describe("WebSocket — Message:new", () => {
     expect(payload.content).toBe("Édité via test");
   });
 
+  // ✅ FIX : nettoyage préventif + emoji unique
   it("User B reçoit message:reacted", async () => {
+    // Supprime toute réaction existante sur ce message
+    // (évite un état résiduel d'un run précédent)
+    await db
+      .delete(messageReactions)
+      .where(eq(messageReactions.message_id, messageId));
+
     const reacted = waitForEvent(socketB, "message:reacted");
-    socketA.emit("message:react", { messageId, emoji: "👍" });
+    socketA.emit("message:react", { messageId, emoji: "🎉" });
 
     const payload = await reacted;
-    expect(payload.emoji).toBe("👍");
+    expect(payload.emoji).toBe("🎉");
     expect(payload.action).toBe("added");
   });
 
