@@ -3,6 +3,7 @@ import { logger } from "./config/logger";
 import app from "./app";
 import { testConnection } from "./core/db";
 import { startReviewScheduler } from "./core/api/orders/orders.scheduler";
+import { startAccountDeletionScheduler } from "./core/api/settings/gdpr/accountDeletion.scheduler";
 
 async function bootstrap() {
   logger.info("🚀 Démarrage du serveur ANKUCAMP...");
@@ -14,9 +15,10 @@ async function bootstrap() {
   app.listen(env.PORT, () => {
     logger.info(`✅ API ANKUCAMP en écoute sur http://localhost:${env.PORT}`);
 
-    // Démarre le scheduler de relance avis (sauf en test)
+    // Démarrer les schedulers (sauf en test)
     if (env.NODE_ENV !== "test") {
       startReviewScheduler();
+      startAccountDeletionScheduler();
     }
   });
 }
