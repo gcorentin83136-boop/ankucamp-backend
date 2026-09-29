@@ -1,5 +1,8 @@
 import { Router } from "express";
-import { authMiddleware } from "../../middlewares/auth.middleware";
+import {
+  authMiddleware,
+  authOptionalMiddleware,
+} from "../../middlewares/auth.middleware";
 import { asyncHandler } from "../../errors/asyncHandler";
 import {
   create,
@@ -31,7 +34,8 @@ router.post("/", authMiddleware, asyncHandler(create));
 // ROUTES DYNAMIQUES /:id
 // ============================================================
 
-router.get("/:id", asyncHandler(getOne));
+// ✅ FIX : auth optionnelle → permet de voir ses propres posts privés
+router.get("/:id", authOptionalMiddleware, asyncHandler(getOne));
 router.patch("/:id", authMiddleware, asyncHandler(update));
 router.delete("/:id", authMiddleware, asyncHandler(remove));
 
