@@ -1,4 +1,4 @@
-import { eq, and, or, desc, lt, sql, isNull, ne } from "drizzle-orm";
+import { eq, and, or, desc, lt, sql, isNull, ne, inArray } from "drizzle-orm";
 import { db } from "../../db";
 import {
   conversations,
@@ -21,9 +21,6 @@ import type {
 // HELPERS PRIVÉS
 // ============================================================
 
-/**
- * Vérifie que l'user est bien participant actif de la conversation.
- */
 async function assertParticipant(conversationId: number, userId: number) {
   const [participant] = await db
     .select()
@@ -44,9 +41,6 @@ async function assertParticipant(conversationId: number, userId: number) {
   return participant;
 }
 
-/**
- * Vérifie que l'user est admin de la conversation.
- */
 async function assertAdmin(conversationId: number, userId: number) {
   const participant = await assertParticipant(conversationId, userId);
 
@@ -57,9 +51,6 @@ async function assertAdmin(conversationId: number, userId: number) {
   return participant;
 }
 
-/**
- * Récupère les infos enrichies d'un user (pour les messages).
- */
 async function enrichUser(userId: number) {
   const [user] = await db
     .select({
@@ -80,11 +71,7 @@ async function enrichUser(userId: number) {
 // CONVERSATIONS
 // ============================================================
 
-/**
- * Liste les conversations d'un user avec dernier message + compteur non-lus.
- */
 export async function getUserConversations(userId: number) {
-  // 1. Récupère les IDs des conversations où l'user est participant actif
   const participants = await db
     .select({
       conversation_id: conversationParticipants.conversation_id,
@@ -102,14 +89,13 @@ export async function getUserConversations(userId: number) {
 
   const conversationIds = participants.map((p) => p.conversation_id);
 
-  // 2. Charge les conversations
+  // ✅ Correction : inArray au lieu de sql... ANY()
   const rows = await db
     .select()
     .from(conversations)
-    .where(sql`${conversations.id} = ANY(${conversationIds})`)
+    .where(inArray(conversations.id, conversationIds))
     .orderBy(desc(conversations.last_message_at));
 
-  // 3. Pour chaque conversation, compte les non-lus + charge les participants
   const result = [];
 
   for (const conv of rows) {
@@ -118,7 +104,6 @@ export async function getUserConversations(userId: number) {
     );
     const lastReadId = myParticipation?.last_read_message_id ?? 0;
 
-    // Compte les non-lus (messages non supprimés, postérieurs à last_read, pas de moi)
     const [unreadResult] = await db
       .select({ count: sql<number>`count(*)::int` })
       .from(messages)
@@ -131,7 +116,6 @@ export async function getUserConversations(userId: number) {
         )
       );
 
-    // Charge les participants (sauf moi)
     const participantsList = await db
       .select({
         user_id: conversationParticipants.user_id,
@@ -150,7 +134,6 @@ export async function getUserConversations(userId: number) {
         )
       );
 
-    // Détermine le nom + avatar à afficher
     let displayName = conv.name;
     let displayAvatar = conv.avatar_url;
 
@@ -178,9 +161,6 @@ export async function getUserConversations(userId: number) {
   return result;
 }
 
-/**
- * Récupère une conversation par ID (vérifie l'accès).
- */
 export async function getConversationById(
   conversationId: number,
   userId: number
@@ -222,15 +202,10 @@ export async function getConversationById(
   };
 }
 
-/**
- * Crée une conversation (direct ou groupe).
- * Pour direct : vérifie qu'il n'en existe pas déjà une entre les 2 users.
- */
 export async function createConversation(
   creatorId: number,
   input: CreateConversationInput
 ) {
-  // Vérif : les participants existent
   for (const pId of input.participant_ids) {
     if (pId === creatorId) {
       throw new AppError("Tu ne peux pas t'ajouter toi-même", 400);
@@ -247,11 +222,9 @@ export async function createConversation(
     }
   }
 
-  // Cas DIRECT : vérifie qu'une conversation n'existe pas déjà
   if (input.type === "direct") {
     const otherId = input.participant_ids[0];
 
-    // Trouve une conversation directe entre les 2 users
     const myConvs = await db
       .select({ conversation_id: conversationParticipants.conversation_id })
       .from(conversationParticipants)
@@ -265,6 +238,7 @@ export async function createConversation(
     if (myConvs.length > 0) {
       const ids = myConvs.map((c) => c.conversation_id);
 
+      // ✅ Correction : inArray au lieu de sql... ANY()
       const existing = await db
         .select({
           id: conversations.id,
@@ -272,15 +246,12 @@ export async function createConversation(
         .from(conversations)
         .innerJoin(
           conversationParticipants,
-          eq(
-            conversationParticipants.conversation_id,
-            conversations.id
-          )
+          eq(conversationParticipants.conversation_id, conversations.id)
         )
         .where(
           and(
             eq(conversations.type, "direct"),
-            sql`${conversations.id} = ANY(${ids})`,
+            inArray(conversations.id, ids),
             eq(conversationParticipants.user_id, otherId),
             isNull(conversationParticipants.left_at)
           )
@@ -296,7 +267,6 @@ export async function createConversation(
     }
   }
 
-  // Crée la conversation
   const [created] = await db
     .insert(conversations)
     .values({
@@ -307,14 +277,12 @@ export async function createConversation(
     })
     .returning();
 
-  // Ajoute le créateur en admin (groupe) ou member (direct)
   await db.insert(conversationParticipants).values({
     conversation_id: created.id,
     user_id: creatorId,
     role: input.type === "group" ? "admin" : "member",
   });
 
-  // Ajoute les autres participants
   for (const pId of input.participant_ids) {
     await db.insert(conversationParticipants).values({
       conversation_id: created.id,
@@ -330,9 +298,6 @@ export async function createConversation(
   return getConversationById(created.id, creatorId);
 }
 
-/**
- * Met à jour une conversation (nom, avatar) — admin uniquement, groupes uniquement.
- */
 export async function updateConversation(
   conversationId: number,
   userId: number,
@@ -365,35 +330,34 @@ export async function updateConversation(
   return updated;
 }
 
-/**
- * Supprime une conversation (admin groupe uniquement).
- */
 export async function deleteConversation(
   conversationId: number,
   userId: number
 ) {
   await assertAdmin(conversationId, userId);
 
+  // ✅ Correction : utilise inArray avec sous-requête Drizzle
+  const messageIds = db
+    .select({ id: messages.id })
+    .from(messages)
+    .where(eq(messages.conversation_id, conversationId));
+
+  await db
+    .delete(messageReads)
+    .where(inArray(messageReads.message_id, messageIds));
+
+  await db
+    .delete(messageReactions)
+    .where(inArray(messageReactions.message_id, messageIds));
+
   await db
     .delete(conversationParticipants)
     .where(eq(conversationParticipants.conversation_id, conversationId));
-  await db
-    .delete(messageReads)
-    .where(
-      sql`${messageReads.message_id} IN (
-        SELECT id FROM messages WHERE conversation_id = ${conversationId}
-      )`
-    );
-  await db
-    .delete(messageReactions)
-    .where(
-      sql`${messageReactions.message_id} IN (
-        SELECT id FROM messages WHERE conversation_id = ${conversationId}
-      )`
-    );
+
   await db
     .delete(messages)
     .where(eq(messages.conversation_id, conversationId));
+
   await db
     .delete(conversations)
     .where(eq(conversations.id, conversationId));
@@ -401,9 +365,6 @@ export async function deleteConversation(
   console.log(`🗑️  Conversation #${conversationId} supprimée`);
 }
 
-/**
- * Quitte une conversation (retire le user).
- */
 export async function leaveConversation(
   conversationId: number,
   userId: number
@@ -427,9 +388,6 @@ export async function leaveConversation(
 // PARTICIPANTS
 // ============================================================
 
-/**
- * Ajoute un participant à un groupe (admin uniquement).
- */
 export async function addParticipant(
   conversationId: number,
   userId: number,
@@ -448,7 +406,6 @@ export async function addParticipant(
     throw new AppError("Impossible d'ajouter un participant à un direct", 400);
   }
 
-  // Vérifie que le user existe
   const [newUser] = await db
     .select({ id: users.id })
     .from(users)
@@ -457,7 +414,6 @@ export async function addParticipant(
 
   if (!newUser) throw new AppError("Utilisateur introuvable", 404);
 
-  // Vérifie qu'il n'est pas déjà participant actif
   const [existing] = await db
     .select()
     .from(conversationParticipants)
@@ -485,9 +441,6 @@ export async function addParticipant(
   );
 }
 
-/**
- * Retire un participant (admin uniquement).
- */
 export async function removeParticipant(
   conversationId: number,
   userId: number,
@@ -496,10 +449,7 @@ export async function removeParticipant(
   await assertAdmin(conversationId, userId);
 
   if (targetUserId === userId) {
-    throw new AppError(
-      "Utilise 'quitter' pour te retirer toi-même",
-      400
-    );
+    throw new AppError("Utilise 'quitter' pour te retirer toi-même", 400);
   }
 
   await db
@@ -521,9 +471,6 @@ export async function removeParticipant(
 // MESSAGES
 // ============================================================
 
-/**
- * Envoie un message dans une conversation.
- */
 export async function sendMessage(
   conversationId: number,
   senderId: number,
@@ -531,12 +478,10 @@ export async function sendMessage(
 ) {
   await assertParticipant(conversationId, senderId);
 
-  // Il faut au moins du contenu OU un média
   if (!input.content && !input.media_url) {
     throw new AppError("Le message doit avoir du contenu ou un média", 400);
   }
 
-  // Vérifie que le reply_to existe
   if (input.reply_to_message_id) {
     const [original] = await db
       .select()
@@ -561,7 +506,6 @@ export async function sendMessage(
     })
     .returning();
 
-  // Met à jour la conversation (last_message_at + preview)
   const preview = input.content
     ? input.content.slice(0, 200)
     : input.type === "image"
@@ -576,7 +520,6 @@ export async function sendMessage(
     })
     .where(eq(conversations.id, conversationId));
 
-  // Marque comme lu pour l'expéditeur
   const [senderPart] = await db
     .select()
     .from(conversationParticipants)
@@ -602,9 +545,6 @@ export async function sendMessage(
   return created;
 }
 
-/**
- * Liste les messages d'une conversation (pagination cursor).
- */
 export async function getMessages(
   conversationId: number,
   userId: number,
@@ -630,19 +570,16 @@ export async function getMessages(
     .orderBy(desc(messages.id))
     .limit(limit);
 
-  // Enrichit avec l'auteur + réactions
   const enriched = [];
 
   for (const msg of rows) {
     const author = await enrichUser(msg.sender_id);
 
-    // Charge les réactions
     const reactions = await db
       .select()
       .from(messageReactions)
       .where(eq(messageReactions.message_id, msg.id));
 
-    // Groupe par emoji
     const reactionsGrouped = reactions.reduce(
       (acc: any, r: any) => {
         acc[r.emoji] = acc[r.emoji] || [];
@@ -659,13 +596,9 @@ export async function getMessages(
     });
   }
 
-  // Retourne dans l'ordre chronologique (le client affiche du bas vers le haut)
   return enriched.reverse();
 }
 
-/**
- * Édite un message (auteur uniquement).
- */
 export async function editMessage(
   messageId: number,
   userId: number,
@@ -705,9 +638,6 @@ export async function editMessage(
   return updated;
 }
 
-/**
- * Supprime un message (soft delete, auteur uniquement).
- */
 export async function deleteMessage(messageId: number, userId: number) {
   const [msg] = await db
     .select()
@@ -729,9 +659,6 @@ export async function deleteMessage(messageId: number, userId: number) {
   console.log(`🗑️  Message #${messageId} supprimé (soft)`);
 }
 
-/**
- * Marque les messages comme lus jusqu'à un message donné.
- */
 export async function markAsRead(
   conversationId: number,
   userId: number,
@@ -739,7 +666,6 @@ export async function markAsRead(
 ) {
   await assertParticipant(conversationId, userId);
 
-  // Si pas de until donné, prend le dernier message
   let lastId = untilMessageId;
 
   if (!lastId) {
@@ -758,7 +684,6 @@ export async function markAsRead(
     lastId = last?.id ?? null;
   }
 
-  // Met à jour le participant
   await db
     .update(conversationParticipants)
     .set({
@@ -783,9 +708,6 @@ export async function markAsRead(
 // RÉACTIONS
 // ============================================================
 
-/**
- * Ajoute ou retire une réaction emoji.
- */
 export async function toggleReaction(
   messageId: number,
   userId: number,
@@ -804,7 +726,6 @@ export async function toggleReaction(
 
   await assertParticipant(msg.conversation_id, userId);
 
-  // Vérifie si la réaction existe déjà
   const [existing] = await db
     .select()
     .from(messageReactions)
