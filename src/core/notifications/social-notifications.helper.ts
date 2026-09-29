@@ -120,3 +120,21 @@ export async function notifyNewFollower(
     `/dashboard/followers`
   );
 }
+/**
+ * Notifie un user qu'il a reçu un nouveau message.
+ */
+export async function notifyNewMessage(
+  userId: number,
+  conversationId: number,
+  messageId: number,
+  senderFirstName: string,
+  preview: string
+): Promise<void> {
+  await notify(
+    userId,
+    "message",
+    `💬 Nouveau message de ${senderFirstName}`,
+    preview,
+    `/messages/${conversationId}`
+  );
+}
