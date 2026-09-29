@@ -2,11 +2,13 @@ import { Router } from "express";
 import {
   register,
   login,
+  logout,
   activate,
   forgot,
   reset,
 } from "./auth.controller";
 import { asyncHandler } from "../../errors/asyncHandler";
+import { authMiddleware } from "../../middlewares/auth.middleware";
 import { authLimiter } from "../../../config/security";
 import oauthRoutes from "./auth.oauth";
 
@@ -15,6 +17,7 @@ const router = Router();
 // Routes classiques (email / password)
 router.post("/register", authLimiter, asyncHandler(register));
 router.post("/login", authLimiter, asyncHandler(login));
+router.post("/logout", authMiddleware, asyncHandler(logout));
 
 // Activation de compte
 router.post("/activate", asyncHandler(activate));

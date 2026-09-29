@@ -7,6 +7,10 @@ import { AppError } from "../../errors/AppError";
 import type { RegisterInput, LoginInput } from "./auth.validation";
 import { sendActivationEmail, sendResetPasswordEmail } from "./auth.emails";
 import { generateUsername } from "../../utils/username";
+import {
+  createSession,
+  deleteSession,
+} from "../settings/sessions/sessions.service";
 
 const SALT_ROUNDS = 10;
 
@@ -70,10 +74,7 @@ export async function registerUser(input: RegisterInput) {
     })
     .returning(publicColumns);
 
-  // ============================================================
-  // Créer les settings par défaut (user_settings)
-  // Idempotent : ne crée que si n'existe pas déjà
-  // ============================================================
+  // Créer les settings par défaut (idempotent)
   try {
     const [existingSettings] = await db
       .select({ id: userSettings.id })
@@ -87,10 +88,9 @@ export async function registerUser(input: RegisterInput) {
     }
   } catch (err) {
     console.error("❌ Erreur création user_settings:", err);
-    // On ne bloque pas l'inscription si ça échoue
   }
 
-  // Envoyer l'email d'activation (async, ne bloque pas la réponse)
+  // Envoyer l'email d'activation (async)
   sendActivationEmail(created.id, created.first_name, created.email).catch(
     (err) => console.error("Erreur envoi email activation:", err)
   );
@@ -98,7 +98,11 @@ export async function registerUser(input: RegisterInput) {
   return created;
 }
 
-export async function loginUser(input: LoginInput) {
+/**
+ * Login avec création de session.
+ * @param req - Requête Express (pour récupérer IP + user-agent)
+ */
+export async function loginUser(input: LoginInput, req?: any) {
   const { email, password } = input;
 
   const [user] = await db
@@ -122,6 +126,18 @@ export async function loginUser(input: LoginInput) {
     role: user.role as "professionnel" | "particulier",
   });
 
+  // ============================================================
+  // Créer la session en BDD (si req fourni)
+  // ============================================================
+  if (req) {
+    try {
+      await createSession(user.id, token, req);
+    } catch (err) {
+      // On ne bloque pas le login si la création de session échoue
+      console.error("❌ Erreur création session:", err);
+    }
+  }
+
   return {
     user: {
       id: user.id,
@@ -135,6 +151,14 @@ export async function loginUser(input: LoginInput) {
     },
     token,
   };
+}
+
+/**
+ * Logout : supprime la session courante.
+ */
+export async function logoutUser(token: string) {
+  await deleteSession(token);
+  return { success: true, message: "Déconnecté" };
 }
 
 /**
@@ -175,7 +199,6 @@ export async function activateAccount(token: string) {
  */
 export async function forgotPassword(email: string) {
   await sendResetPasswordEmail(email);
-  // Toujours retourner succès, même si l'email n'existe pas (sécurité)
   return {
     success: true,
     message: "Si cet email existe, un lien a été envoyé",

@@ -9,6 +9,7 @@ import {
 import {
   registerUser,
   loginUser,
+  logoutUser,
   activateAccount,
   forgotPassword,
   resetPassword,
@@ -42,7 +43,8 @@ export async function login(req: Request, res: Response) {
     throw new AppError("Données invalides", 400, parsed.error.flatten().fieldErrors);
   }
 
-  const { user, token } = await loginUser(parsed.data);
+  // On passe req pour la création de session (IP + user-agent)
+  const { user, token } = await loginUser(parsed.data, req);
 
   return res.status(200).json({
     success: true,
@@ -50,6 +52,21 @@ export async function login(req: Request, res: Response) {
     user,
     token,
   });
+}
+
+// ============================================================
+// POST /auth/logout
+// ============================================================
+export async function logout(req: Request, res: Response) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    throw new AppError("Token manquant", 401);
+  }
+
+  const token = authHeader.slice(7);
+  const result = await logoutUser(token);
+
+  return res.json(result);
 }
 
 // ============================================================
