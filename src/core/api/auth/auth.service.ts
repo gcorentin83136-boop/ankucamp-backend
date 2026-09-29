@@ -1,7 +1,7 @@
 import bcrypt from "bcrypt";
 import { eq } from "drizzle-orm";
 import { db } from "../../db";
-import { users } from "../../db/schema";
+import { users, userSettings } from "../../db/schema";
 import { signToken } from "../../security/jwt";
 import { AppError } from "../../errors/AppError";
 import type { RegisterInput, LoginInput } from "./auth.validation";
@@ -69,6 +69,26 @@ export async function registerUser(input: RegisterInput) {
       provider: "local",
     })
     .returning(publicColumns);
+
+  // ============================================================
+  // Créer les settings par défaut (user_settings)
+  // Idempotent : ne crée que si n'existe pas déjà
+  // ============================================================
+  try {
+    const [existingSettings] = await db
+      .select({ id: userSettings.id })
+      .from(userSettings)
+      .where(eq(userSettings.user_id, created.id))
+      .limit(1);
+
+    if (!existingSettings) {
+      await db.insert(userSettings).values({ user_id: created.id });
+      console.log(`⚙️  user_settings créés pour user #${created.id}`);
+    }
+  } catch (err) {
+    console.error("❌ Erreur création user_settings:", err);
+    // On ne bloque pas l'inscription si ça échoue
+  }
 
   // Envoyer l'email d'activation (async, ne bloque pas la réponse)
   sendActivationEmail(created.id, created.first_name, created.email).catch(

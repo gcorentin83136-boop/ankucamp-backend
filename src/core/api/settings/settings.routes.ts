@@ -1,5 +1,6 @@
 import { Router } from "express";
 import accountRoutes from "./account/account.routes";
+import notificationsRoutes from "./notifications/notifications.routes";
 
 const router = Router();
 
@@ -8,9 +9,9 @@ const router = Router();
 // ============================================================
 
 router.use("/account", accountRoutes);
+router.use("/notifications", notificationsRoutes);
 
 // À venir :
-// router.use("/notifications", notificationsRoutes);
 // router.use("/privacy", privacyRoutes);
 // router.use("/shop", shopRoutes);
 // router.use("/sessions", sessionsRoutes);
