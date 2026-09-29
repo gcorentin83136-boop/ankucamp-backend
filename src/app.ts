@@ -19,6 +19,7 @@ import postsRoutes from "./core/api/posts/posts.routes";
 import friendsRoutes from "./core/api/friends/friends.routes";
 import followsRoutes from "./core/api/follows/follows.routes";
 import shareRoutes from "./core/api/share/share.routes";
+import settingsRoutes from "./core/api/settings/settings.routes";
 
 import { errorHandler } from "./core/errors/errorHandler";
 import { globalLimiter } from "./config/security";
@@ -119,6 +120,7 @@ app.use("/posts", postsRoutes);
 app.use("/friends", friendsRoutes);
 app.use("/follows", followsRoutes);
 app.use("/share", shareRoutes);
+app.use("/settings", settingsRoutes);
 
 // ===============
 // 404

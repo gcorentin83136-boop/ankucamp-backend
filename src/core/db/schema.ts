@@ -306,3 +306,128 @@ export const follows = pgTable("follows", {
   shop_id: integer("shop_id").notNull(),
   created_at: timestamp("created_at").defaultNow(),
 });
+
+// ============================================================
+// PARAMÈTRES UTILISATEUR
+// ============================================================
+
+// ========================
+// USER SETTINGS (préférences utilisateur)
+// ========================
+export const userSettings = pgTable("user_settings", {
+  id: serial("id").primaryKey(),
+  user_id: integer("user_id").notNull().unique(),
+
+  // Notifications email
+  email_order_updates: integer("email_order_updates").default(1).notNull(),
+  email_new_messages: integer("email_new_messages").default(1).notNull(),
+  email_social_activity: integer("email_social_activity").default(1).notNull(),
+  email_marketing: integer("email_marketing").default(0).notNull(),
+
+  // Notifications push (in-app / mobile)
+  push_order_updates: integer("push_order_updates").default(1).notNull(),
+  push_new_messages: integer("push_new_messages").default(1).notNull(),
+  push_social_activity: integer("push_social_activity").default(1).notNull(),
+
+  // Confidentialité
+  profile_visibility: varchar("profile_visibility", { length: 20 })
+    .default("public")
+    .notNull(),
+  show_email: integer("show_email").default(0).notNull(),
+  show_phone: integer("show_phone").default(0).notNull(),
+  allow_messages_from: varchar("allow_messages_from", { length: 20 })
+    .default("everyone")
+    .notNull(),
+  search_indexable: integer("search_indexable").default(1).notNull(),
+
+  // Préférences
+  language: varchar("language", { length: 5 }).default("fr").notNull(),
+  timezone: varchar("timezone", { length: 50 })
+    .default("Europe/Paris")
+    .notNull(),
+
+  created_at: timestamp("created_at").defaultNow(),
+  updated_at: timestamp("updated_at").defaultNow(),
+});
+
+// ========================
+// SHOP SETTINGS (paramètres boutique)
+// ========================
+export const shopSettings = pgTable("shop_settings", {
+  id: serial("id").primaryKey(),
+  shop_id: integer("shop_id").notNull().unique(),
+
+  // Mode vacances
+  vacation_mode: integer("vacation_mode").default(0).notNull(),
+  vacation_message: text("vacation_message"),
+  vacation_until: timestamp("vacation_until"),
+
+  // Visibilité
+  is_hidden: integer("is_hidden").default(0).notNull(),
+
+  // Retours
+  accepts_returns: integer("accepts_returns").default(0).notNull(),
+  return_days: integer("return_days").default(14).notNull(),
+
+  // Livraison
+  shipping_zones: text("shipping_zones"), // JSON
+
+  // Contact
+  contact_phone: varchar("contact_phone", { length: 30 }),
+  contact_email: varchar("contact_email", { length: 255 }),
+
+  created_at: timestamp("created_at").defaultNow(),
+  updated_at: timestamp("updated_at").defaultNow(),
+});
+
+// ========================
+// USER SESSIONS (sessions actives)
+// ========================
+export const userSessions = pgTable("user_sessions", {
+  id: serial("id").primaryKey(),
+  user_id: integer("user_id").notNull(),
+  token_hash: varchar("token_hash", { length: 255 }).notNull(),
+  device_info: varchar("device_info", { length: 255 }),
+  ip_address: varchar("ip_address", { length: 50 }),
+  user_agent: text("user_agent"),
+  last_active_at: timestamp("last_active_at").defaultNow(),
+  expires_at: timestamp("expires_at").notNull(),
+  created_at: timestamp("created_at").defaultNow(),
+});
+
+// ========================
+// LEGAL ACCEPTANCES (RGPD : acceptations des documents légaux)
+// ========================
+export const legalAcceptances = pgTable("legal_acceptances", {
+  id: serial("id").primaryKey(),
+  user_id: integer("user_id").notNull(),
+  document_type: varchar("document_type", { length: 50 }).notNull(),
+  document_version: varchar("document_version", { length: 20 }).notNull(),
+  accepted_at: timestamp("accepted_at").defaultNow().notNull(),
+  ip_address: varchar("ip_address", { length: 50 }),
+});
+
+// ========================
+// DATA EXPORT REQUESTS (RGPD : export des données)
+// ========================
+export const dataExportRequests = pgTable("data_export_requests", {
+  id: serial("id").primaryKey(),
+  user_id: integer("user_id").notNull(),
+  status: varchar("status", { length: 20 }).default("pending").notNull(),
+  file_url: text("file_url"),
+  requested_at: timestamp("requested_at").defaultNow().notNull(),
+  completed_at: timestamp("completed_at"),
+  expires_at: timestamp("expires_at"),
+});
+
+// ========================
+// ACCOUNT DELETION REQUESTS (RGPD : suppression compte)
+// ========================
+export const accountDeletionRequests = pgTable("account_deletion_requests", {
+  id: serial("id").primaryKey(),
+  user_id: integer("user_id").notNull(),
+  reason: text("reason"),
+  status: varchar("status", { length: 20 }).default("pending").notNull(),
+  scheduled_deletion_at: timestamp("scheduled_deletion_at").notNull(),
+  created_at: timestamp("created_at").defaultNow(),
+});
