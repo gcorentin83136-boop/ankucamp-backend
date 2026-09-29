@@ -50,7 +50,7 @@ export function registerSocketHandlers(
   const user = socket.user!;
   console.log(`🔌 User #${user.id} (@${user.username}) connecté`);
 
-  // Room par user
+  // Room par user (pour recevoir les events ciblés)
   socket.join(`user:${user.id}`);
 
   // ============================================================
@@ -126,11 +126,11 @@ export function registerSocketHandlers(
           reactions: {},
         };
 
-        // Broadcast à la room
-        io.to(`conversation:${conversationId}`).emit(
-          "message:new",
-          enriched
-        );
+        // ✅ FIX : Broadcast aux AUTRES participants (pas d'écho pour l'expéditeur)
+        // socket.to(room) exclut automatiquement le socket courant
+        socket
+          .to(`conversation:${conversationId}`)
+          .emit("message:new", enriched);
 
         // Notif push aux autres participants
         const participantIds = await getConversationParticipantIds(
@@ -150,6 +150,7 @@ export function registerSocketHandlers(
             console.error("❌ Erreur notif message:", err)
           );
 
+          // Émet sur la room user:X pour mettre à jour la liste des convs
           io.to(`user:${pId}`).emit("conversation:updated", {
             conversationId,
             lastMessage: enriched,
@@ -185,6 +186,7 @@ export function registerSocketHandlers(
           .limit(1);
 
         if (msg?.conversation_id) {
+          // Broadcast à tous (y compris l'expéditeur pour sync)
           io.to(`conversation:${msg.conversation_id}`).emit(
             "message:edited",
             updated
@@ -216,6 +218,7 @@ export function registerSocketHandlers(
 
       await deleteMessage(messageId, user.id);
 
+      // Broadcast à tous (y compris l'expéditeur pour sync)
       io.to(`conversation:${msg.conversation_id}`).emit("message:deleted", {
         messageId,
       });
@@ -236,7 +239,8 @@ export function registerSocketHandlers(
 
         await markAsRead(conversationId, user.id, untilMessageId ?? null);
 
-        io.to(`conversation:${conversationId}`).emit("message:read", {
+        // Broadcast aux AUTRES (pas besoin de se notifier soi-même)
+        socket.to(`conversation:${conversationId}`).emit("message:read", {
           conversationId,
           userId: user.id,
           untilMessageId: untilMessageId ?? null,
@@ -267,6 +271,7 @@ export function registerSocketHandlers(
           .limit(1);
 
         if (msg?.conversation_id) {
+          // Broadcast à tous (y compris l'expéditeur pour sync)
           io.to(`conversation:${msg.conversation_id}`).emit("message:reacted", {
             messageId,
             userId: user.id,
