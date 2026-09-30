@@ -283,6 +283,25 @@ export const payments = pgTable("payments", {
   created_at: timestamp("created_at").defaultNow(),
 });
 
+// ========================
+// REFUND REQUESTS (demandes de remboursement)
+// ========================
+export const refundRequests = pgTable("refund_requests", {
+  id: serial("id").primaryKey(),
+  order_id: integer("order_id").notNull(),
+  payment_id: integer("payment_id").notNull(),
+  requested_by: integer("requested_by").notNull(), // buyer_id
+  reason: text("reason"),
+  status: varchar("status", { length: 20 }).default("pending").notNull(),
+  // 'pending' | 'approved' | 'rejected' | 'refunded' | 'failed'
+  stripe_refund_id: varchar("stripe_refund_id", { length: 255 }),
+  refund_amount: decimal("refund_amount", { precision: 10, scale: 2 }),
+  admin_id: integer("admin_id"),
+  admin_comment: text("admin_comment"),
+  requested_at: timestamp("requested_at").defaultNow(),
+  processed_at: timestamp("processed_at"),
+});
+
 // ============================================================
 // RÉSEAU SOCIAL
 // ============================================================

@@ -5,7 +5,7 @@ import { env } from "../../config/env";
 export interface TokenPayload {
   id: number;
   email: string;
-  role: "professionnel" | "particulier";
+  role: "professionnel" | "particulier" | "admin";
 }
 
 export function signToken(payload: TokenPayload): string {

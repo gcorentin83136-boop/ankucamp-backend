@@ -383,5 +383,49 @@ export async function handleStripeEvent(event: {
       }
       break;
     }
+
+    // ============================================================
+    // ✅ NOUVEAU : Webhook charge.refunded
+    // Déclenché par Stripe après un remboursement effectif.
+    // ============================================================
+    case "charge.refunded": {
+      const charge = event.data.object;
+      const stripeRefundId = charge.refunds?.data?.[0]?.id;
+
+      if (!stripeRefundId) {
+        console.warn("⚠️  charge.refunded : pas de refund_id trouvé");
+        break;
+      }
+
+      // Import dynamique pour éviter les cycles
+      const { findRefundByStripeId, markRefundAsRefunded } = await import(
+        "../refunds/refunds.service"
+      );
+
+      const refundReq = await findRefundByStripeId(stripeRefundId);
+
+      if (!refundReq) {
+        console.warn(
+          `⚠️  charge.refunded : refund_request introuvable (stripe_id: ${stripeRefundId})`
+        );
+        break;
+      }
+
+      // Idempotence : si déjà "refunded", ne rien faire
+      if (refundReq.status === "refunded") {
+        console.log(
+          `ℹ️  Refund #${refundReq.id} déjà marqué comme refunded, skip`
+        );
+        break;
+      }
+
+      await markRefundAsRefunded(refundReq.id);
+
+      console.log(
+        `✅ charge.refunded : refund #${refundReq.id} → status "refunded"`
+      );
+
+      break;
+    }
   }
 }
