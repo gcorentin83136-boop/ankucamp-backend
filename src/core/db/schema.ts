@@ -52,14 +52,14 @@ export const users = pgTable("users", {
 });
 
 // ========================
-// USER BADGES (badges de confiance)
+// USER BADGES
 // ========================
 export const userBadges = pgTable("user_badges", {
   id: serial("id").primaryKey(),
   user_id: integer("user_id").notNull(),
   badge: varchar("badge", { length: 50 }).notNull(),
   // 'verified' | 'agriculteur' | 'artisan' | 'createur' | 'bio' | 'producteur_local'
-  granted_by: integer("granted_by"), // admin_id
+  granted_by: integer("granted_by"),
   granted_at: timestamp("granted_at").defaultNow(),
   revoked_at: timestamp("revoked_at"),
 });
@@ -190,13 +190,9 @@ export const contactRequests = pgTable("contact_requests", {
 // MESSAGERIE
 // ============================================================
 
-// ========================
-// CONVERSATIONS
-// ========================
 export const conversations = pgTable("conversations", {
   id: serial("id").primaryKey(),
   type: varchar("type", { length: 20 }).default("direct").notNull(),
-  // 'direct' | 'group'
   name: varchar("name", { length: 255 }),
   avatar_url: text("avatar_url"),
   created_by: integer("created_by").notNull(),
@@ -205,9 +201,6 @@ export const conversations = pgTable("conversations", {
   created_at: timestamp("created_at").defaultNow(),
 });
 
-// ========================
-// CONVERSATION PARTICIPANTS
-// ========================
 export const conversationParticipants = pgTable(
   "conversation_participants",
   {
@@ -215,7 +208,6 @@ export const conversationParticipants = pgTable(
     conversation_id: integer("conversation_id").notNull(),
     user_id: integer("user_id").notNull(),
     role: varchar("role", { length: 20 }).default("member").notNull(),
-    // 'member' | 'admin'
     joined_at: timestamp("joined_at").defaultNow(),
     left_at: timestamp("left_at"),
     last_read_at: timestamp("last_read_at"),
@@ -224,15 +216,11 @@ export const conversationParticipants = pgTable(
   }
 );
 
-// ========================
-// MESSAGES
-// ========================
 export const messages = pgTable("messages", {
   id: serial("id").primaryKey(),
   sender_id: integer("sender_id").notNull(),
   conversation_id: integer("conversation_id"),
   type: varchar("type", { length: 20 }).default("text").notNull(),
-  // 'text' | 'image' | 'file' | 'system'
   content: text("content").notNull(),
   media_url: text("media_url"),
   reply_to_message_id: integer("reply_to_message_id"),
@@ -241,9 +229,6 @@ export const messages = pgTable("messages", {
   created_at: timestamp("created_at").defaultNow(),
 });
 
-// ========================
-// MESSAGE READS
-// ========================
 export const messageReads = pgTable("message_reads", {
   id: serial("id").primaryKey(),
   message_id: integer("message_id").notNull(),
@@ -251,9 +236,6 @@ export const messageReads = pgTable("message_reads", {
   read_at: timestamp("read_at").defaultNow().notNull(),
 });
 
-// ========================
-// MESSAGE REACTIONS
-// ========================
 export const messageReactions = pgTable("message_reactions", {
   id: serial("id").primaryKey(),
   message_id: integer("message_id").notNull(),
@@ -285,9 +267,7 @@ export const kycRequests = pgTable("kyc_requests", {
   id: serial("id").primaryKey(),
   user_id: integer("user_id").notNull(),
   status: varchar("status", { length: 20 }).default("pending").notNull(),
-  // 'pending' | 'approved' | 'rejected'
   type: varchar("type", { length: 30 }).notNull(),
-  // 'agriculteur' | 'artisan' | 'createur' | 'autre'
   siret: varchar("siret", { length: 14 }).notNull(),
   siret_verified: integer("siret_verified").default(0).notNull(),
   siret_data: text("siret_data"),
@@ -306,7 +286,6 @@ export const pushSubscriptions = pgTable("push_subscriptions", {
   user_id: integer("user_id").notNull(),
   token: text("token").notNull().unique(),
   platform: varchar("platform", { length: 20 }).notNull(),
-  // 'ios' | 'android' | 'web'
   device_info: varchar("device_info", { length: 255 }),
   created_at: timestamp("created_at").defaultNow(),
   last_used_at: timestamp("last_used_at").defaultNow(),
@@ -344,7 +323,6 @@ export const refundRequests = pgTable("refund_requests", {
   requested_by: integer("requested_by").notNull(),
   reason: text("reason"),
   status: varchar("status", { length: 20 }).default("pending").notNull(),
-  // 'pending' | 'approved' | 'rejected' | 'refunded' | 'failed'
   stripe_refund_id: varchar("stripe_refund_id", { length: 255 }),
   refund_amount: decimal("refund_amount", { precision: 10, scale: 2 }),
   admin_id: integer("admin_id"),
@@ -505,13 +483,10 @@ export const contentReports = pgTable("content_reports", {
   id: serial("id").primaryKey(),
   reporter_id: integer("reporter_id").notNull(),
   target_type: varchar("target_type", { length: 20 }).notNull(),
-  // 'post' | 'comment' | 'review' | 'product' | 'shop' | 'user' | 'message'
   target_id: integer("target_id").notNull(),
   reason: varchar("reason", { length: 30 }).notNull(),
-  // 'spam' | 'harassment' | 'hate_speech' | 'violence' | 'copyright' | 'fake' | 'other'
   description: text("description"),
   status: varchar("status", { length: 20 }).default("pending").notNull(),
-  // 'pending' | 'resolved' | 'dismissed'
   admin_id: integer("admin_id"),
   admin_note: text("admin_note"),
   content_deleted: integer("content_deleted").default(0).notNull(),
@@ -520,7 +495,7 @@ export const contentReports = pgTable("content_reports", {
 });
 
 // ========================
-// EVENTS (marchés, ateliers, salons...)
+// EVENTS
 // ========================
 export const events = pgTable("events", {
   id: serial("id").primaryKey(),
@@ -530,7 +505,6 @@ export const events = pgTable("events", {
   description: text("description"),
   cover_url: text("cover_url"),
   type: varchar("type", { length: 30 }).notNull(),
-  // 'marche' | 'atelier' | 'salon' | 'porte_ouverte' | 'degustation' | 'autre'
   start_at: timestamp("start_at").notNull(),
   end_at: timestamp("end_at"),
   address: text("address"),
@@ -542,25 +516,23 @@ export const events = pgTable("events", {
   is_free: integer("is_free").default(1).notNull(),
   price: decimal("price", { precision: 10, scale: 2 }),
   status: varchar("status", { length: 20 }).default("published").notNull(),
-  // 'draft' | 'published' | 'cancelled' | 'completed'
   created_at: timestamp("created_at").defaultNow(),
   updated_at: timestamp("updated_at").defaultNow(),
 });
 
 // ========================
-// EVENT REGISTRATIONS (inscriptions)
+// EVENT REGISTRATIONS
 // ========================
 export const eventRegistrations = pgTable("event_registrations", {
   id: serial("id").primaryKey(),
   event_id: integer("event_id").notNull(),
   user_id: integer("user_id").notNull(),
   status: varchar("status", { length: 20 }).default("registered").notNull(),
-  // 'registered' | 'waitlist' | 'cancelled' | 'attended'
   created_at: timestamp("created_at").defaultNow(),
 });
 
 // ========================
-// ARTICLES (blog / conseils)
+// ARTICLES
 // ========================
 export const articles = pgTable("articles", {
   id: serial("id").primaryKey(),
@@ -569,14 +541,10 @@ export const articles = pgTable("articles", {
   slug: varchar("slug", { length: 255 }).notNull().unique(),
   excerpt: varchar("excerpt", { length: 500 }),
   content: text("content").notNull(),
-  // markdown
   cover_url: text("cover_url"),
   tags: text("tags"),
-  // JSON array of strings
   category: varchar("category", { length: 30 }).notNull(),
-  // 'recette' | 'conseil' | 'portrait' | 'actualite' | 'autre'
   status: varchar("status", { length: 20 }).default("published").notNull(),
-  // 'draft' | 'published' | 'archived'
   published_at: timestamp("published_at"),
   views_count: integer("views_count").default(0).notNull(),
   likes_count: integer("likes_count").default(0).notNull(),
@@ -585,11 +553,66 @@ export const articles = pgTable("articles", {
 });
 
 // ========================
-// ARTICLE LIKES (toggle like)
+// ARTICLE LIKES
 // ========================
 export const articleLikes = pgTable("article_likes", {
   id: serial("id").primaryKey(),
   article_id: integer("article_id").notNull(),
   user_id: integer("user_id").notNull(),
   created_at: timestamp("created_at").defaultNow(),
+});
+
+// ========================
+// CARTS (panier)
+// ========================
+export const carts = pgTable("carts", {
+  id: serial("id").primaryKey(),
+  user_id: integer("user_id").notNull(),
+  product_id: integer("product_id").notNull(),
+  quantity: integer("quantity").default(1).notNull(),
+  created_at: timestamp("created_at").defaultNow(),
+  updated_at: timestamp("updated_at").defaultNow(),
+});
+
+// ========================
+// WISHLISTS (favoris produits)
+// ========================
+export const wishlists = pgTable("wishlists", {
+  id: serial("id").primaryKey(),
+  user_id: integer("user_id").notNull(),
+  product_id: integer("product_id").notNull(),
+  created_at: timestamp("created_at").defaultNow(),
+});
+
+// ========================
+// PROMO CODES (codes de reduction)
+// ========================
+export const promoCodes = pgTable("promo_codes", {
+  id: serial("id").primaryKey(),
+  code: varchar("code", { length: 50 }).notNull().unique(),
+  description: varchar("description", { length: 255 }),
+  type: varchar("type", { length: 20 }).notNull(),
+  // 'percent' | 'fixed'
+  value: decimal("value", { precision: 10, scale: 2 }).notNull(),
+  min_amount: decimal("min_amount", { precision: 10, scale: 2 }),
+  max_uses: integer("max_uses"),
+  uses_count: integer("uses_count").default(0).notNull(),
+  valid_from: timestamp("valid_from").defaultNow(),
+  valid_until: timestamp("valid_until"),
+  is_active: integer("is_active").default(1).notNull(),
+  seller_id: integer("seller_id"),
+  // null = plateforme entiere, sinon code d'un vendeur
+  created_by: integer("created_by").notNull(),
+  created_at: timestamp("created_at").defaultNow(),
+});
+
+// ========================
+// PROMO USES (utilisations)
+// ========================
+export const promoUses = pgTable("promo_uses", {
+  id: serial("id").primaryKey(),
+  promo_id: integer("promo_id").notNull(),
+  user_id: integer("user_id").notNull(),
+  order_id: integer("order_id"),
+  used_at: timestamp("used_at").defaultNow(),
 });
