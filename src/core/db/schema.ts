@@ -500,3 +500,24 @@ export const accountDeletionRequests = pgTable("account_deletion_requests", {
   scheduled_deletion_at: timestamp("scheduled_deletion_at").notNull(),
   created_at: timestamp("created_at").defaultNow(),
 });
+
+// ========================
+// CONTENT REPORTS (signalements universels)
+// ========================
+export const contentReports = pgTable("content_reports", {
+  id: serial("id").primaryKey(),
+  reporter_id: integer("reporter_id").notNull(),
+  target_type: varchar("target_type", { length: 20 }).notNull(),
+  // 'post' | 'comment' | 'review' | 'product' | 'shop' | 'user' | 'message'
+  target_id: integer("target_id").notNull(),
+  reason: varchar("reason", { length: 30 }).notNull(),
+  // 'spam' | 'harassment' | 'hate_speech' | 'violence' | 'copyright' | 'fake' | 'other'
+  description: text("description"),
+  status: varchar("status", { length: 20 }).default("pending").notNull(),
+  // 'pending' | 'resolved' | 'dismissed'
+  admin_id: integer("admin_id"),
+  admin_note: text("admin_note"),
+  content_deleted: integer("content_deleted").default(0).notNull(),
+  resolved_at: timestamp("resolved_at"),
+  created_at: timestamp("created_at").defaultNow(),
+});

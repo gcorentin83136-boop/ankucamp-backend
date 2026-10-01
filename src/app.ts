@@ -28,6 +28,8 @@ import dashboardRoutes from "./core/api/dashboard/dashboard.routes";
 import kycRoutes from "./core/api/kyc/kyc.routes";
 import kycAdminRoutes from "./core/api/kyc/kyc.admin.routes";
 import badgesRoutes from "./core/api/badges/badges.routes";
+import reportsRoutes from "./core/api/moderation/reports.routes";
+import reportsAdminRoutes from "./core/api/moderation/reports.admin.routes";
 
 import { errorHandler } from "./core/errors/errorHandler";
 import { globalLimiter } from "./config/security";
@@ -136,6 +138,8 @@ app.use("/search", searchRoutes);
 app.use("/dashboard", dashboardRoutes);
 app.use("/kyc", kycRoutes);
 app.use("/admin/kyc", kycAdminRoutes);
+app.use("/reports", reportsRoutes);
+app.use("/admin/moderation", reportsAdminRoutes);
 
 // ===============
 // 404
