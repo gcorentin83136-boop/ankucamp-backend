@@ -1,4 +1,17 @@
-import { eq, and, or, desc, asc, sql, ilike, notInArray, gte, lte, inArray } from "drizzle-orm";
+import {
+  eq,
+  and,
+  or,
+  desc,
+  asc,
+  sql,
+  ilike,
+  notInArray,
+  gte,
+  lte,
+  inArray,
+  isNotNull,
+} from "drizzle-orm";
 import { db } from "../../db";
 import {
   users,
@@ -29,12 +42,53 @@ async function getHiddenShopIds(): Promise<number[]> {
   return rows.map((r) => r.shop_id);
 }
 
+/**
+ * Construit l'expression SQL de distance Haversine (en km).
+ * Utilisable pour : SELECT distance_km, WHERE distance <= radius, ORDER BY distance.
+ */
+function buildDistanceExpr(
+  table: { latitude: any; longitude: any },
+  lat: number,
+  lng: number
+) {
+  return sql<number>`(
+    6371 * acos(
+      LEAST(1, GREATEST(-1,
+        cos(radians(${lat})) * cos(radians(${table.latitude}::numeric)) *
+        cos(radians(${table.longitude}::numeric) - radians(${lng})) +
+        sin(radians(${lat})) * sin(radians(${table.latitude}::numeric))
+      ))
+    )
+  )`;
+}
+
+/**
+ * Ajoute les conditions geo (lat/lng non null + distance <= radius).
+ * Retourne null si lat/lng non fournis.
+ */
+function applyGeoFilters(
+  conditions: any[],
+  table: { latitude: any; longitude: any },
+  lat?: number,
+  lng?: number,
+  radius?: number
+): any {
+  if (lat === undefined || lng === undefined) return null;
+
+  const distanceExpr = buildDistanceExpr(table, lat, lng);
+  conditions.push(isNotNull(table.latitude));
+  conditions.push(isNotNull(table.longitude));
+  conditions.push(sql`${distanceExpr} <= ${radius ?? 25}`);
+
+  return distanceExpr;
+}
+
 // ============================================================
 // RECHERCHE USERS
 // ============================================================
 
 export async function searchUsers(query: SearchUsersQuery) {
-  const { q, role, city, sort, limit, offset } = query;
+  const { q, role, city, sort, limit, offset, lat, lng, radius } = query;
 
   const conditions: any[] = [
     eq(userSettings.search_indexable, 1),
@@ -60,31 +114,43 @@ export async function searchUsers(query: SearchUsersQuery) {
     );
   }
 
+  const distanceExpr = applyGeoFilters(conditions, users, lat, lng, radius);
+  const hasGeo = distanceExpr !== null;
+
   let orderBy;
   switch (sort) {
     case "alphabetical":
       orderBy = asc(users.first_name);
       break;
     case "recent":
-    default:
       orderBy = desc(users.created_at);
+      break;
+    case "relevance":
+    default:
+      orderBy = hasGeo ? sql`${distanceExpr} ASC` : desc(users.created_at);
       break;
   }
 
+  const selectFields: any = {
+    id: users.id,
+    first_name: users.first_name,
+    last_name: users.last_name,
+    username: users.username,
+    avatar_url: users.avatar_url,
+    cover_url: users.cover_url,
+    bio: users.bio,
+    city: users.city,
+    role: users.role,
+    is_private: users.is_private,
+    created_at: users.created_at,
+  };
+
+  if (hasGeo) {
+    selectFields.distance_km = distanceExpr;
+  }
+
   return db
-    .select({
-      id: users.id,
-      first_name: users.first_name,
-      last_name: users.last_name,
-      username: users.username,
-      avatar_url: users.avatar_url,
-      cover_url: users.cover_url,
-      bio: users.bio,
-      city: users.city,
-      role: users.role,
-      is_private: users.is_private,
-      created_at: users.created_at,
-    })
+    .select(selectFields)
     .from(users)
     .innerJoin(userSettings, eq(userSettings.user_id, users.id))
     .where(and(...conditions))
@@ -98,7 +164,7 @@ export async function searchUsers(query: SearchUsersQuery) {
 // ============================================================
 
 export async function searchShops(query: SearchShopsQuery) {
-  const { q, city, category_id, sort, limit, offset } = query;
+  const { q, city, category_id, sort, limit, offset, lat, lng, radius } = query;
 
   const hiddenShopIds = await getHiddenShopIds();
   const conditions: any[] = [];
@@ -134,6 +200,9 @@ export async function searchShops(query: SearchShopsQuery) {
     conditions.push(inArray(shops.id, ids));
   }
 
+  const distanceExpr = applyGeoFilters(conditions, shops, lat, lng, radius);
+  const hasGeo = distanceExpr !== null;
+
   let orderBy;
   switch (sort) {
     case "rating":
@@ -147,31 +216,39 @@ export async function searchShops(query: SearchShopsQuery) {
       );
       break;
     case "recent":
+      orderBy = desc(shops.created_at);
+      break;
     case "relevance":
     default:
-      orderBy = desc(shops.created_at);
+      orderBy = hasGeo ? sql`${distanceExpr} ASC` : desc(shops.created_at);
       break;
   }
 
+  const selectFields: any = {
+    id: shops.id,
+    name: shops.name,
+    description: shops.description,
+    logo_url: shops.logo_url,
+    banner_url: shops.banner_url,
+    city: shops.city,
+    postal_code: shops.postal_code,
+    created_at: shops.created_at,
+    products_count: sql<number>`(
+      SELECT COUNT(*)::int FROM products WHERE shop_id = ${shops.id}
+    )`,
+    average_rating: sql<number>`(
+      SELECT COALESCE(AVG(rating), 0)::numeric(3,1)
+      FROM reviews
+      WHERE seller_id = ${shops.owner_id} AND is_flagged = 0
+    )`,
+  };
+
+  if (hasGeo) {
+    selectFields.distance_km = distanceExpr;
+  }
+
   return db
-    .select({
-      id: shops.id,
-      name: shops.name,
-      description: shops.description,
-      logo_url: shops.logo_url,
-      banner_url: shops.banner_url,
-      city: shops.city,
-      postal_code: shops.postal_code,
-      created_at: shops.created_at,
-      products_count: sql<number>`(
-        SELECT COUNT(*)::int FROM products WHERE shop_id = ${shops.id}
-      )`,
-      average_rating: sql<number>`(
-        SELECT COALESCE(AVG(rating), 0)::numeric(3,1)
-        FROM reviews
-        WHERE seller_id = ${shops.owner_id} AND is_flagged = 0
-      )`,
-    })
+    .select(selectFields)
     .from(shops)
     .where(conditions.length > 0 ? and(...conditions) : sql`1=1`)
     .orderBy(orderBy)
@@ -196,6 +273,9 @@ export async function searchProducts(query: SearchProductsQuery) {
     sort,
     limit,
     offset,
+    lat,
+    lng,
+    radius,
   } = query;
 
   const hiddenShopIds = await getHiddenShopIds();
@@ -251,6 +331,10 @@ export async function searchProducts(query: SearchProductsQuery) {
     );
   }
 
+  // Géo : on utilise les coords de la boutique (JOIN shops plus bas)
+  const distanceExpr = applyGeoFilters(conditions, shops, lat, lng, radius);
+  const hasGeo = distanceExpr !== null;
+
   let orderBy;
   switch (sort) {
     case "price_asc":
@@ -265,33 +349,41 @@ export async function searchProducts(query: SearchProductsQuery) {
       );
       break;
     case "recent":
+      orderBy = desc(products.created_at);
+      break;
     case "relevance":
     default:
-      orderBy = desc(products.created_at);
+      orderBy = hasGeo ? sql`${distanceExpr} ASC` : desc(products.created_at);
       break;
   }
 
+  const selectFields: any = {
+    id: products.id,
+    shop_id: products.shop_id,
+    name: products.name,
+    description: products.description,
+    image_url: products.image_url,
+    location: products.location,
+    price: products.price,
+    stock: products.stock,
+    created_at: products.created_at,
+    shop_name: shops.name,
+    shop_logo_url: shops.logo_url,
+    average_rating: sql<number>`(
+      SELECT COALESCE(AVG(rating), 0)::numeric(3,1)
+      FROM reviews WHERE product_id = ${products.id} AND is_flagged = 0
+    )`,
+    reviews_count: sql<number>`(
+      SELECT COUNT(*)::int FROM reviews WHERE product_id = ${products.id} AND is_flagged = 0
+    )`,
+  };
+
+  if (hasGeo) {
+    selectFields.distance_km = distanceExpr;
+  }
+
   return db
-    .select({
-      id: products.id,
-      shop_id: products.shop_id,
-      name: products.name,
-      description: products.description,
-      image_url: products.image_url,
-      location: products.location,
-      price: products.price,
-      stock: products.stock,
-      created_at: products.created_at,
-      shop_name: shops.name,
-      shop_logo_url: shops.logo_url,
-      average_rating: sql<number>`(
-        SELECT COALESCE(AVG(rating), 0)::numeric(3,1)
-        FROM reviews WHERE product_id = ${products.id} AND is_flagged = 0
-      )`,
-      reviews_count: sql<number>`(
-        SELECT COUNT(*)::int FROM reviews WHERE product_id = ${products.id} AND is_flagged = 0
-      )`,
-    })
+    .select(selectFields)
     .from(products)
     .leftJoin(shops, eq(shops.id, products.shop_id))
     .where(conditions.length > 0 ? and(...conditions) : sql`1=1`)
@@ -301,16 +393,40 @@ export async function searchProducts(query: SearchProductsQuery) {
 }
 
 // ============================================================
-// RECHERCHE GLOBALE
+// RECHERCHE GLOBALE (avec geo)
 // ============================================================
 
 export async function searchAll(query: SearchAllQuery) {
-  const { q, limit_per_type } = query;
+  const { q, limit_per_type, lat, lng, radius } = query;
 
   const [usersResults, shopsResults, productsResults] = await Promise.all([
-    searchUsers({ q, limit: limit_per_type, offset: 0, sort: "relevance" } as any),
-    searchShops({ q, limit: limit_per_type, offset: 0, sort: "relevance" } as any),
-    searchProducts({ q, limit: limit_per_type, offset: 0, sort: "relevance" } as any),
+    searchUsers({
+      q,
+      limit: limit_per_type,
+      offset: 0,
+      sort: "relevance",
+      lat,
+      lng,
+      radius,
+    } as any),
+    searchShops({
+      q,
+      limit: limit_per_type,
+      offset: 0,
+      sort: "relevance",
+      lat,
+      lng,
+      radius,
+    } as any),
+    searchProducts({
+      q,
+      limit: limit_per_type,
+      offset: 0,
+      sort: "relevance",
+      lat,
+      lng,
+      radius,
+    } as any),
   ]);
 
   return {
@@ -321,7 +437,7 @@ export async function searchAll(query: SearchAllQuery) {
 }
 
 // ============================================================
-// SUGGEST
+// SUGGEST (inchangé — pas de géo)
 // ============================================================
 
 export async function suggest(query: SuggestQuery) {

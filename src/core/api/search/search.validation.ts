@@ -1,13 +1,18 @@
 import { z } from "zod";
 
 // ============================================================
-// BASE QUERY
+// BASE QUERY (avec geo optionnelle)
 // ============================================================
 
 const baseQuerySchema = z.object({
   q: z.string().max(100).optional(),
   limit: z.coerce.number().int().min(1).max(50).default(20),
   offset: z.coerce.number().int().min(0).default(0),
+
+  // Géo (optionnel) — si lat+lng fournis, filtre + tri par distance
+  lat: z.coerce.number().min(-90).max(90).optional(),
+  lng: z.coerce.number().min(-180).max(180).optional(),
+  radius: z.coerce.number().min(1).max(500).default(25),
 });
 
 // ============================================================
@@ -67,12 +72,15 @@ export const searchProductsQuerySchema = baseQuerySchema.extend({
 export type SearchProductsQuery = z.infer<typeof searchProductsQuerySchema>;
 
 // ============================================================
-// RECHERCHE GLOBALE
+// RECHERCHE GLOBALE (avec geo)
 // ============================================================
 
 export const searchAllQuerySchema = z.object({
   q: z.string().min(1).max(100),
   limit_per_type: z.coerce.number().int().min(1).max(10).default(5),
+  lat: z.coerce.number().min(-90).max(90).optional(),
+  lng: z.coerce.number().min(-180).max(180).optional(),
+  radius: z.coerce.number().min(1).max(500).default(25),
 });
 
 export type SearchAllQuery = z.infer<typeof searchAllQuerySchema>;
