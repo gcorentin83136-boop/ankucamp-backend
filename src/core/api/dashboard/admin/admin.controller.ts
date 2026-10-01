@@ -10,6 +10,7 @@ import {
   getModerationList,
   getPendingRefunds,
   getKycSummaryForDashboard,
+  getAdminSummary,
 } from "./admin.service";
 
 // ============================================================
@@ -18,9 +19,7 @@ import {
 
 export async function stats(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifié", 401);
-
   const result = await getAdminStats();
-
   return res.json({ success: true, ...result });
 }
 
@@ -30,14 +29,8 @@ export async function stats(req: AuthRequest, res: Response) {
 
 export async function recentUsers(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifié", 401);
-
   const list = await getRecentUsers(50);
-
-  return res.json({
-    success: true,
-    count: list.length,
-    users: list,
-  });
+  return res.json({ success: true, count: list.length, users: list });
 }
 
 // ============================================================
@@ -46,14 +39,8 @@ export async function recentUsers(req: AuthRequest, res: Response) {
 
 export async function recentOrders(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifié", 401);
-
   const list = await getRecentOrders(50);
-
-  return res.json({
-    success: true,
-    count: list.length,
-    orders: list,
-  });
+  return res.json({ success: true, count: list.length, orders: list });
 }
 
 // ============================================================
@@ -73,12 +60,7 @@ export async function revenueChart(req: AuthRequest, res: Response) {
   }
 
   const chart = await getRevenueChart(parsed.data.months);
-
-  return res.json({
-    success: true,
-    months: parsed.data.months,
-    chart,
-  });
+  return res.json({ success: true, months: parsed.data.months, chart });
 }
 
 // ============================================================
@@ -87,14 +69,8 @@ export async function revenueChart(req: AuthRequest, res: Response) {
 
 export async function moderation(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifié", 401);
-
   const list = await getModerationList();
-
-  return res.json({
-    success: true,
-    count: list.length,
-    reviews: list,
-  });
+  return res.json({ success: true, count: list.length, reviews: list });
 }
 
 // ============================================================
@@ -103,14 +79,8 @@ export async function moderation(req: AuthRequest, res: Response) {
 
 export async function pendingRefunds(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifié", 401);
-
   const list = await getPendingRefunds(50);
-
-  return res.json({
-    success: true,
-    count: list.length,
-    refunds: list,
-  });
+  return res.json({ success: true, count: list.length, refunds: list });
 }
 
 // ============================================================
@@ -119,11 +89,16 @@ export async function pendingRefunds(req: AuthRequest, res: Response) {
 
 export async function kycSummary(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifié", 401);
-
   const result = await getKycSummaryForDashboard();
+  return res.json({ success: true, ...result });
+}
 
-  return res.json({
-    success: true,
-    ...result,
-  });
+// ============================================================
+// GET /dashboard/admin/summary
+// ============================================================
+
+export async function summary(req: AuthRequest, res: Response) {
+  if (!req.user) throw new AppError("Non authentifié", 401);
+  const result = await getAdminSummary();
+  return res.json({ success: true, ...result });
 }

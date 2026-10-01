@@ -9,6 +9,14 @@ import {
   reviews,
   refundRequests,
   kycRequests,
+  contentReports,
+  promoCodes,
+  events,
+  articles,
+  categories,
+  dataExportRequests,
+  accountDeletionRequests,
+  userBadges,
 } from "../../../db/schema";
 import { AppError } from "../../../errors/AppError";
 import { getKycStats } from "../../kyc/kyc.service";
@@ -18,7 +26,6 @@ import { getKycStats } from "../../kyc/kyc.service";
 // ============================================================
 
 export async function getAdminStats() {
-  // 1. Users (total + vérifiés)
   const [usersRow] = await db
     .select({
       total: sql<number>`count(*)::int`,
@@ -26,17 +33,14 @@ export async function getAdminStats() {
     })
     .from(users);
 
-  // 2. Shops
   const [shopsRow] = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(shops);
 
-  // 3. Products
   const [productsRow] = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(products);
 
-  // 4. Orders (total + par statut)
   const [ordersRow] = await db
     .select({
       total: sql<number>`count(*)::int`,
@@ -49,7 +53,6 @@ export async function getAdminStats() {
     })
     .from(orders);
 
-  // 5. CA plateforme (somme des application_fee_amount des payments succeeded)
   const [revenueRow] = await db
     .select({
       total: sql<string>`coalesce(sum(${payments.application_fee_amount}), 0)::text`,
@@ -57,13 +60,11 @@ export async function getAdminStats() {
     .from(payments)
     .where(eq(payments.status, "succeeded"));
 
-  // 6. Refunds pending
   const [refundsRow] = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(refundRequests)
     .where(eq(refundRequests.status, "pending"));
 
-  // 7. Reviews signalées
   const [flaggedRow] = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(reviews)
@@ -223,4 +224,213 @@ export async function getKycSummaryForDashboard() {
     .limit(5);
 
   return { stats, pending };
+}
+
+// ============================================================
+// SUMMARY — Vue agrégée complète pour le dashboard admin
+// ============================================================
+
+export async function getAdminSummary() {
+  const now = new Date();
+  const in7Days = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+  // 1. Compteurs "à traiter"
+  const [kycPending] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(kycRequests)
+    .where(eq(kycRequests.status, "pending"));
+
+  const [reportsPending] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(contentReports)
+    .where(eq(contentReports.status, "pending"));
+
+  const [refundsPending] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(refundRequests)
+    .where(eq(refundRequests.status, "pending"));
+
+  const [reviewsFlagged] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(reviews)
+    .where(eq(reviews.is_flagged, 1));
+
+  const [rgpdPending] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(dataExportRequests)
+    .where(eq(dataExportRequests.status, "pending"));
+
+  const [deletionsPending] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(accountDeletionRequests)
+    .where(eq(accountDeletionRequests.status, "pending"));
+
+  // 2. Stats globales
+  const [usersRow] = await db
+    .select({
+      total: sql<number>`count(*)::int`,
+      verified: sql<number>`sum(case when email_verified = 1 then 1 else 0 end)::int`,
+      pros: sql<number>`sum(case when role = 'professionnel' then 1 else 0 end)::int`,
+    })
+    .from(users);
+
+  const [shopsRow] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(shops);
+
+  const [productsRow] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(products);
+
+  const [categoriesRow] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(categories);
+
+  const [articlesRow] = await db
+    .select({
+      total: sql<number>`count(*)::int`,
+      published: sql<number>`sum(case when status = 'published' then 1 else 0 end)::int`,
+    })
+    .from(articles);
+
+  const [badgesRow] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(userBadges)
+    .where(sql`revoked_at IS NULL`);
+
+  // 3. CA plateforme
+  const [revenueRow] = await db
+    .select({
+      gmv: sql<string>`coalesce(sum(${payments.amount_ttc}), 0)::text`,
+      fees: sql<string>`coalesce(sum(${payments.application_fee_amount}), 0)::text`,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(payments)
+    .where(eq(payments.status, "succeeded"));
+
+  const [revenueMonthRow] = await db
+    .select({
+      gmv: sql<string>`coalesce(sum(${payments.amount_ttc}), 0)::text`,
+      fees: sql<string>`coalesce(sum(${payments.application_fee_amount}), 0)::text`,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(payments)
+    .where(
+      and(
+        eq(payments.status, "succeeded"),
+        gte(payments.created_at, sql`date_trunc('month', now())`)
+      )
+    );
+
+  // 4. Codes promo actifs
+  const [promoActiveRow] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(promoCodes)
+    .where(eq(promoCodes.is_active, 1));
+
+  // 5. Événements à venir
+  const [eventsUpcomingRow] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(events)
+    .where(
+      and(eq(events.status, "published"), gte(events.start_at, now))
+    );
+
+  const [eventsWeekRow] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(events)
+    .where(
+      and(
+        eq(events.status, "published"),
+        gte(events.start_at, now),
+        sql`${events.start_at} <= ${in7Days}`
+      )
+    );
+
+  // 6. Derniers signalements pending
+  const recentReports = await db
+    .select({
+      id: contentReports.id,
+      target_type: contentReports.target_type,
+      target_id: contentReports.target_id,
+      reason: contentReports.reason,
+      created_at: contentReports.created_at,
+      reporter_username: users.username,
+    })
+    .from(contentReports)
+    .leftJoin(users, eq(users.id, contentReports.reporter_id))
+    .where(eq(contentReports.status, "pending"))
+    .orderBy(desc(contentReports.created_at))
+    .limit(5);
+
+  // 7. Derniers KYC pending
+  const recentKyc = await db
+    .select({
+      id: kycRequests.id,
+      user_id: kycRequests.user_id,
+      type: kycRequests.type,
+      created_at: kycRequests.created_at,
+      username: users.username,
+      first_name: users.first_name,
+      last_name: users.last_name,
+    })
+    .from(kycRequests)
+    .innerJoin(users, eq(users.id, kycRequests.user_id))
+    .where(eq(kycRequests.status, "pending"))
+    .orderBy(desc(kycRequests.created_at))
+    .limit(5);
+
+  return {
+    to_treat: {
+      kyc_pending: kycPending?.count ?? 0,
+      reports_pending: reportsPending?.count ?? 0,
+      refunds_pending: refundsPending?.count ?? 0,
+      reviews_flagged: reviewsFlagged?.count ?? 0,
+      rgpd_exports_pending: rgpdPending?.count ?? 0,
+      deletions_pending: deletionsPending?.count ?? 0,
+      total:
+        (kycPending?.count ?? 0) +
+        (reportsPending?.count ?? 0) +
+        (refundsPending?.count ?? 0) +
+        (reviewsFlagged?.count ?? 0) +
+        (rgpdPending?.count ?? 0) +
+        (deletionsPending?.count ?? 0),
+    },
+    users: {
+      total: usersRow?.total ?? 0,
+      verified: usersRow?.verified ?? 0,
+      pros: usersRow?.pros ?? 0,
+    },
+    shops: shopsRow?.count ?? 0,
+    products: productsRow?.count ?? 0,
+    categories: categoriesRow?.count ?? 0,
+    badges_active: badgesRow?.count ?? 0,
+    articles: {
+      total: articlesRow?.total ?? 0,
+      published: articlesRow?.published ?? 0,
+    },
+    revenue: {
+      all_time: {
+        gmv: revenueRow?.gmv ?? "0",
+        fees: revenueRow?.fees ?? "0",
+        count: revenueRow?.count ?? 0,
+      },
+      this_month: {
+        gmv: revenueMonthRow?.gmv ?? "0",
+        fees: revenueMonthRow?.fees ?? "0",
+        count: revenueMonthRow?.count ?? 0,
+      },
+    },
+    promo: {
+      active_codes: promoActiveRow?.count ?? 0,
+    },
+    events: {
+      upcoming: eventsUpcomingRow?.count ?? 0,
+      this_week: eventsWeekRow?.count ?? 0,
+    },
+    recent: {
+      reports: recentReports,
+      kyc: recentKyc,
+    },
+  };
 }

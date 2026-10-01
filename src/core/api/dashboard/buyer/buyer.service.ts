@@ -5,6 +5,11 @@ import {
   payments,
   refundRequests,
   users,
+  wishlists,
+  carts,
+  eventRegistrations,
+  events,
+  articleLikes,
 } from "../../../db/schema";
 import { AppError } from "../../../errors/AppError";
 import { resendInvoiceEmail } from "../../orders/orders.emails";
@@ -14,7 +19,6 @@ import { resendInvoiceEmail } from "../../orders/orders.emails";
 // ============================================================
 
 export async function getBuyerStats(buyerId: number) {
-  // 1. Compteurs de commandes (par statut)
   const [totalRow] = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(orders)
@@ -34,10 +38,7 @@ export async function getBuyerStats(buyerId: number) {
     .select({ count: sql<number>`count(*)::int` })
     .from(orders)
     .where(
-      and(
-        eq(orders.buyer_id, buyerId),
-        eq(orders.status, "delivered")
-      )
+      and(eq(orders.buyer_id, buyerId), eq(orders.status, "delivered"))
     );
 
   const [cancelledRow] = await db
@@ -50,7 +51,6 @@ export async function getBuyerStats(buyerId: number) {
       )
     );
 
-  // 2. Total dépensé (uniquement les paiements réussis)
   const [spentRow] = await db
     .select({
       total: sql<string>`coalesce(sum(${payments.amount_ttc}), 0)::text`,
@@ -105,7 +105,7 @@ export async function getRecentRefunds(buyerId: number, limit = 5) {
 }
 
 // ============================================================
-// LISTE DES FACTURES (payments succeeded avec invoice_url)
+// LISTE DES FACTURES
 // ============================================================
 
 export async function getMyInvoices(buyerId: number) {
@@ -135,7 +135,6 @@ export async function getMyInvoices(buyerId: number) {
 // ============================================================
 
 export async function resendMyInvoice(buyerId: number, orderId: number) {
-  // 1. Vérifie que la commande appartient bien au buyer
   const [order] = await db
     .select()
     .from(orders)
@@ -147,7 +146,6 @@ export async function resendMyInvoice(buyerId: number, orderId: number) {
     throw new AppError("Vous n'êtes pas l'acheteur de cette commande", 403);
   }
 
-  // 2. Vérifie qu'une facture existe
   const [payment] = await db
     .select()
     .from(payments)
@@ -155,13 +153,9 @@ export async function resendMyInvoice(buyerId: number, orderId: number) {
     .limit(1);
 
   if (!payment || !payment.invoice_url) {
-    throw new AppError(
-      "Aucune facture disponible pour cette commande",
-      400
-    );
+    throw new AppError("Aucune facture disponible pour cette commande", 400);
   }
 
-  // 3. Récupère les infos du buyer
   const [buyer] = await db
     .select({
       email: users.email,
@@ -173,7 +167,6 @@ export async function resendMyInvoice(buyerId: number, orderId: number) {
 
   if (!buyer) throw new AppError("Utilisateur introuvable", 404);
 
-  // 4. Envoie l'email
   await resendInvoiceEmail(orderId, buyer.email, buyer.first_name);
 
   console.log(
@@ -184,7 +177,7 @@ export async function resendMyInvoice(buyerId: number, orderId: number) {
 }
 
 // ============================================================
-// GRAPHIQUE DÉPENSES (12 derniers mois)
+// GRAPHIQUE DÉPENSES
 // ============================================================
 
 export async function getSpendingChart(buyerId: number, months = 12) {
@@ -206,4 +199,109 @@ export async function getSpendingChart(buyerId: number, months = 12) {
     .orderBy(sql`date_trunc('month', ${payments.created_at})`);
 
   return rows;
+}
+
+// ============================================================
+// SUMMARY — Vue agrégée complète pour le dashboard buyer
+// ============================================================
+
+export async function getBuyerSummary(buyerId: number) {
+  const now = new Date();
+
+  const [totalRow] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(orders)
+    .where(eq(orders.buyer_id, buyerId));
+
+  const [pendingRow] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(orders)
+    .where(
+      and(
+        eq(orders.buyer_id, buyerId),
+        inArray(orders.status, ["pending", "confirmed", "shipped"])
+      )
+    );
+
+  const [spentRow] = await db
+    .select({
+      total: sql<string>`coalesce(sum(${payments.amount_ttc}), 0)::text`,
+    })
+    .from(payments)
+    .where(
+      and(
+        eq(payments.user_id, buyerId),
+        eq(payments.status, "succeeded")
+      )
+    );
+
+  const [wishlistRow] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(wishlists)
+    .where(eq(wishlists.user_id, buyerId));
+
+  const [cartRow] = await db
+    .select({
+      count: sql<number>`count(*)::int`,
+      qty: sql<number>`coalesce(sum(${carts.quantity}), 0)::int`,
+    })
+    .from(carts)
+    .where(eq(carts.user_id, buyerId));
+
+  const myEventsUpcoming = await db
+    .select({
+      event_id: events.id,
+      title: events.title,
+      type: events.type,
+      start_at: events.start_at,
+      city: events.city,
+      cover_url: events.cover_url,
+      status: eventRegistrations.status,
+    })
+    .from(eventRegistrations)
+    .innerJoin(events, eq(events.id, eventRegistrations.event_id))
+    .where(
+      and(
+        eq(eventRegistrations.user_id, buyerId),
+        inArray(eventRegistrations.status, ["registered", "waitlist"]),
+        gte(events.start_at, now)
+      )
+    )
+    .orderBy(events.start_at)
+    .limit(5);
+
+  const [eventsCountRow] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(eventRegistrations)
+    .innerJoin(events, eq(events.id, eventRegistrations.event_id))
+    .where(
+      and(
+        eq(eventRegistrations.user_id, buyerId),
+        inArray(eventRegistrations.status, ["registered", "waitlist"]),
+        gte(events.start_at, now)
+      )
+    );
+
+  const [articleLikesRow] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(articleLikes)
+    .where(eq(articleLikes.user_id, buyerId));
+
+  return {
+    orders: {
+      total: totalRow?.count ?? 0,
+      pending: pendingRow?.count ?? 0,
+    },
+    total_spent: spentRow?.total ?? "0",
+    wishlist_count: wishlistRow?.count ?? 0,
+    cart: {
+      items_count: cartRow?.count ?? 0,
+      total_quantity: cartRow?.qty ?? 0,
+    },
+    events: {
+      upcoming_count: eventsCountRow?.count ?? 0,
+      upcoming: myEventsUpcoming,
+    },
+    article_likes: articleLikesRow?.count ?? 0,
+  };
 }

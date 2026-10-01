@@ -11,6 +11,7 @@ import {
   getRecentReviews,
   getRecentOrdersToTreat,
   getSellerVerification,
+  getSellerSummary,
 } from "./seller.service";
 
 // ============================================================
@@ -19,9 +20,7 @@ import {
 
 export async function stats(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifié", 401);
-
   const result = await getSellerStats(req.user.id);
-
   return res.json({ success: true, ...result });
 }
 
@@ -31,9 +30,7 @@ export async function stats(req: AuthRequest, res: Response) {
 
 export async function ordersBreakdown(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifié", 401);
-
   const breakdown = await getSellerOrdersBreakdown(req.user.id);
-
   return res.json({ success: true, breakdown });
 }
 
@@ -53,16 +50,8 @@ export async function revenueChart(req: AuthRequest, res: Response) {
     );
   }
 
-  const chart = await getSellerRevenueChart(
-    req.user.id,
-    parsed.data.months
-  );
-
-  return res.json({
-    success: true,
-    months: parsed.data.months,
-    chart,
-  });
+  const chart = await getSellerRevenueChart(req.user.id, parsed.data.months);
+  return res.json({ success: true, months: parsed.data.months, chart });
 }
 
 // ============================================================
@@ -71,14 +60,8 @@ export async function revenueChart(req: AuthRequest, res: Response) {
 
 export async function topProducts(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifié", 401);
-
   const list = await getTopProducts(req.user.id);
-
-  return res.json({
-    success: true,
-    count: list.length,
-    products: list,
-  });
+  return res.json({ success: true, count: list.length, products: list });
 }
 
 // ============================================================
@@ -87,9 +70,7 @@ export async function topProducts(req: AuthRequest, res: Response) {
 
 export async function ratings(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifié", 401);
-
   const result = await getSellerRatings(req.user.id);
-
   return res.json({ success: true, ...result });
 }
 
@@ -99,14 +80,8 @@ export async function ratings(req: AuthRequest, res: Response) {
 
 export async function recentReviews(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifié", 401);
-
   const list = await getRecentReviews(req.user.id);
-
-  return res.json({
-    success: true,
-    count: list.length,
-    reviews: list,
-  });
+  return res.json({ success: true, count: list.length, reviews: list });
 }
 
 // ============================================================
@@ -115,14 +90,8 @@ export async function recentReviews(req: AuthRequest, res: Response) {
 
 export async function recentOrders(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifié", 401);
-
   const list = await getRecentOrdersToTreat(req.user.id);
-
-  return res.json({
-    success: true,
-    count: list.length,
-    orders: list,
-  });
+  return res.json({ success: true, count: list.length, orders: list });
 }
 
 // ============================================================
@@ -131,8 +100,16 @@ export async function recentOrders(req: AuthRequest, res: Response) {
 
 export async function verification(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifié", 401);
-
   const result = await getSellerVerification(req.user.id);
+  return res.json({ success: true, ...result });
+}
 
+// ============================================================
+// GET /dashboard/seller/summary
+// ============================================================
+
+export async function summary(req: AuthRequest, res: Response) {
+  if (!req.user) throw new AppError("Non authentifié", 401);
+  const result = await getSellerSummary(req.user.id);
   return res.json({ success: true, ...result });
 }

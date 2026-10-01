@@ -9,6 +9,7 @@ import {
   getMyInvoices,
   resendMyInvoice,
   getSpendingChart,
+  getBuyerSummary,
 } from "./buyer.service";
 
 function parseId(raw: string | undefined): number {
@@ -23,9 +24,7 @@ function parseId(raw: string | undefined): number {
 
 export async function stats(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifié", 401);
-
   const result = await getBuyerStats(req.user.id);
-
   return res.json({ success: true, ...result });
 }
 
@@ -35,14 +34,8 @@ export async function stats(req: AuthRequest, res: Response) {
 
 export async function recentOrders(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifié", 401);
-
   const list = await getRecentOrders(req.user.id);
-
-  return res.json({
-    success: true,
-    count: list.length,
-    orders: list,
-  });
+  return res.json({ success: true, count: list.length, orders: list });
 }
 
 // ============================================================
@@ -51,14 +44,8 @@ export async function recentOrders(req: AuthRequest, res: Response) {
 
 export async function recentRefunds(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifié", 401);
-
   const list = await getRecentRefunds(req.user.id);
-
-  return res.json({
-    success: true,
-    count: list.length,
-    refunds: list,
-  });
+  return res.json({ success: true, count: list.length, refunds: list });
 }
 
 // ============================================================
@@ -67,14 +54,8 @@ export async function recentRefunds(req: AuthRequest, res: Response) {
 
 export async function invoices(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifié", 401);
-
   const list = await getMyInvoices(req.user.id);
-
-  return res.json({
-    success: true,
-    count: list.length,
-    invoices: list,
-  });
+  return res.json({ success: true, count: list.length, invoices: list });
 }
 
 // ============================================================
@@ -83,11 +64,8 @@ export async function invoices(req: AuthRequest, res: Response) {
 
 export async function resendInvoice(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifié", 401);
-
   const orderId = parseId(req.params.orderId);
-
   const result = await resendMyInvoice(req.user.id, orderId);
-
   return res.json({
     success: true,
     message: `Facture renvoyée à ${result.email}`,
@@ -112,10 +90,15 @@ export async function spendingChart(req: AuthRequest, res: Response) {
   }
 
   const chart = await getSpendingChart(req.user.id, parsed.data.months);
+  return res.json({ success: true, months: parsed.data.months, chart });
+}
 
-  return res.json({
-    success: true,
-    months: parsed.data.months,
-    chart,
-  });
+// ============================================================
+// GET /dashboard/buyer/summary
+// ============================================================
+
+export async function summary(req: AuthRequest, res: Response) {
+  if (!req.user) throw new AppError("Non authentifié", 401);
+  const result = await getBuyerSummary(req.user.id);
+  return res.json({ success: true, ...result });
 }

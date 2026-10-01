@@ -9,6 +9,7 @@ import {
   invoices as buyerInvoices,
   resendInvoice as buyerResendInvoice,
   spendingChart as buyerSpendingChart,
+  summary as buyerSummary,
 } from "./buyer/buyer.controller";
 import {
   stats as sellerStats,
@@ -19,6 +20,7 @@ import {
   recentReviews as sellerRecentReviews,
   recentOrders as sellerRecentOrders,
   verification as sellerVerification,
+  summary as sellerSummary,
 } from "./seller/seller.controller";
 import {
   stats as adminStats,
@@ -28,6 +30,7 @@ import {
   moderation as adminModeration,
   pendingRefunds as adminPendingRefunds,
   kycSummary as adminKycSummary,
+  summary as adminSummary,
 } from "./admin/admin.controller";
 
 const router = Router();
@@ -38,6 +41,7 @@ router.use(authMiddleware);
 // BUYER
 // ============================================================
 
+router.get("/buyer/summary", asyncHandler(buyerSummary));
 router.get("/buyer/stats", asyncHandler(buyerStats));
 router.get("/buyer/recent-orders", asyncHandler(buyerRecentOrders));
 router.get("/buyer/recent-refunds", asyncHandler(buyerRecentRefunds));
@@ -52,6 +56,7 @@ router.get("/buyer/spending-chart", asyncHandler(buyerSpendingChart));
 // SELLER
 // ============================================================
 
+router.get("/seller/summary", asyncHandler(sellerSummary));
 router.get("/seller/stats", asyncHandler(sellerStats));
 router.get(
   "/seller/orders-breakdown",
@@ -68,6 +73,11 @@ router.get("/seller/verification", asyncHandler(sellerVerification));
 // ADMIN
 // ============================================================
 
+router.get(
+  "/admin/summary",
+  requireRole("admin"),
+  asyncHandler(adminSummary)
+);
 router.get(
   "/admin/stats",
   requireRole("admin"),

@@ -8,6 +8,12 @@ import {
   reviews,
   refundRequests,
   users,
+  promoCodes,
+  events,
+  eventRegistrations,
+  articles,
+  kycRequests,
+  shops,
 } from "../../../db/schema";
 import { AppError } from "../../../errors/AppError";
 import { getMyLastKycRequest } from "../../kyc/kyc.service";
@@ -18,7 +24,6 @@ import { getUserBadges } from "../../badges/badges.service";
 // ============================================================
 
 export async function getSellerStats(sellerId: number) {
-  // 1. CA total (payments succeeded sur les commandes du seller)
   const [revenueRow] = await db
     .select({
       total: sql<string>`coalesce(sum(${payments.seller_amount}), 0)::text`,
@@ -31,7 +36,6 @@ export async function getSellerStats(sellerId: number) {
       )
     );
 
-  // 2. CA du mois en cours
   const [monthRow] = await db
     .select({
       total: sql<string>`coalesce(sum(${payments.seller_amount}), 0)::text`,
@@ -45,7 +49,6 @@ export async function getSellerStats(sellerId: number) {
       )
     );
 
-  // 3. CA 12 derniers mois
   const [yearRow] = await db
     .select({
       total: sql<string>`coalesce(sum(${payments.seller_amount}), 0)::text`,
@@ -59,7 +62,6 @@ export async function getSellerStats(sellerId: number) {
       )
     );
 
-  // 4. Nombre de produits (via les shops du seller)
   const [productsCountRow] = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(products)
@@ -69,7 +71,6 @@ export async function getSellerStats(sellerId: number) {
       )`
     );
 
-  // 5. Note moyenne (tous avis confondus, hors avis signalés)
   const [ratingRow] = await db
     .select({
       avg: sql<number>`coalesce(avg(${reviews.rating}), 0)::numeric(3,1)`,
@@ -77,10 +78,7 @@ export async function getSellerStats(sellerId: number) {
     })
     .from(reviews)
     .where(
-      and(
-        eq(reviews.seller_id, sellerId),
-        eq(reviews.is_flagged, 0)
-      )
+      and(eq(reviews.seller_id, sellerId), eq(reviews.is_flagged, 0))
     );
 
   return {
@@ -203,10 +201,7 @@ export async function getSellerRatings(sellerId: number) {
     })
     .from(reviews)
     .where(
-      and(
-        eq(reviews.seller_id, sellerId),
-        eq(reviews.is_flagged, 0)
-      )
+      and(eq(reviews.seller_id, sellerId), eq(reviews.is_flagged, 0))
     );
 
   const byProduct = await db
@@ -219,10 +214,7 @@ export async function getSellerRatings(sellerId: number) {
     .from(reviews)
     .leftJoin(products, eq(products.id, reviews.product_id))
     .where(
-      and(
-        eq(reviews.seller_id, sellerId),
-        eq(reviews.is_flagged, 0)
-      )
+      and(eq(reviews.seller_id, sellerId), eq(reviews.is_flagged, 0))
     )
     .groupBy(reviews.product_id, products.name)
     .orderBy(desc(sql`avg(${reviews.rating})`));
@@ -299,5 +291,170 @@ export async function getSellerVerification(sellerId: number) {
         }
       : null,
     badges,
+  };
+}
+
+// ============================================================
+// SUMMARY — Vue agrégée complète pour le dashboard seller
+// ============================================================
+
+export async function getSellerSummary(sellerId: number) {
+  const now = new Date();
+
+  const [ordersPending] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(orders)
+    .where(and(eq(orders.seller_id, sellerId), eq(orders.status, "pending")));
+
+  const [ordersShipped] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(orders)
+    .where(and(eq(orders.seller_id, sellerId), eq(orders.status, "shipped")));
+
+  const [refundsPending] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(refundRequests)
+    .innerJoin(orders, eq(orders.id, refundRequests.order_id))
+    .where(
+      and(
+        eq(orders.seller_id, sellerId),
+        eq(refundRequests.status, "pending")
+      )
+    );
+
+  const [revenueAll] = await db
+    .select({
+      total: sql<string>`coalesce(sum(${payments.seller_amount}), 0)::text`,
+    })
+    .from(payments)
+    .where(
+      and(
+        eq(payments.seller_id, sellerId),
+        eq(payments.status, "succeeded")
+      )
+    );
+
+  const [revenueMonth] = await db
+    .select({
+      total: sql<string>`coalesce(sum(${payments.seller_amount}), 0)::text`,
+    })
+    .from(payments)
+    .where(
+      and(
+        eq(payments.seller_id, sellerId),
+        eq(payments.status, "succeeded"),
+        gte(payments.created_at, sql`date_trunc('month', now())`)
+      )
+    );
+
+  const [ratingRow] = await db
+    .select({
+      avg: sql<number>`coalesce(avg(${reviews.rating}), 0)::numeric(3,1)`,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(reviews)
+    .where(and(eq(reviews.seller_id, sellerId), eq(reviews.is_flagged, 0)));
+
+  const [productsRow] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(products)
+    .where(
+      sql`${products.shop_id} IN (
+        SELECT id FROM shops WHERE owner_id = ${sellerId}
+      )`
+    );
+
+  const [shopsRow] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(shops)
+    .where(eq(shops.owner_id, sellerId));
+
+  const [promoActiveRow] = await db
+    .select({
+      count: sql<number>`count(*)::int`,
+      uses: sql<number>`coalesce(sum(${promoCodes.uses_count}), 0)::int`,
+    })
+    .from(promoCodes)
+    .where(
+      and(
+        eq(promoCodes.seller_id, sellerId),
+        eq(promoCodes.is_active, 1)
+      )
+    );
+
+  const [eventsUpcomingRow] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(events)
+    .where(
+      and(
+        eq(events.organizer_id, sellerId),
+        eq(events.status, "published"),
+        gte(events.start_at, now)
+      )
+    );
+
+  const [registrationsRow] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(eventRegistrations)
+    .innerJoin(events, eq(events.id, eventRegistrations.event_id))
+    .where(
+      and(
+        eq(events.organizer_id, sellerId),
+        eq(eventRegistrations.status, "registered")
+      )
+    );
+
+  const [articlesRow] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(articles)
+    .where(
+      and(
+        eq(articles.author_id, sellerId),
+        eq(articles.status, "published")
+      )
+    );
+
+  const [kycRow] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(kycRequests)
+    .where(
+      and(
+        eq(kycRequests.user_id, sellerId),
+        eq(kycRequests.status, "pending")
+      )
+    );
+
+  return {
+    to_treat: {
+      orders_pending: ordersPending?.count ?? 0,
+      orders_shipped: ordersShipped?.count ?? 0,
+      refunds_pending: refundsPending?.count ?? 0,
+      event_registrations: registrationsRow?.count ?? 0,
+      kyc_pending: kycRow?.count ?? 0,
+      total:
+        (ordersPending?.count ?? 0) +
+        (ordersShipped?.count ?? 0) +
+        (refundsPending?.count ?? 0),
+    },
+    revenue: {
+      all_time: revenueAll?.total ?? "0",
+      this_month: revenueMonth?.total ?? "0",
+    },
+    rating: {
+      average: Number(ratingRow?.avg ?? 0),
+      count: ratingRow?.count ?? 0,
+    },
+    shops: shopsRow?.count ?? 0,
+    products: productsRow?.count ?? 0,
+    promo: {
+      active_codes: promoActiveRow?.count ?? 0,
+      total_uses: promoActiveRow?.uses ?? 0,
+    },
+    events: {
+      upcoming: eventsUpcomingRow?.count ?? 0,
+    },
+    articles: {
+      published: articlesRow?.count ?? 0,
+    },
   };
 }
