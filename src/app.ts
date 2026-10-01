@@ -24,6 +24,7 @@ import conversationsRoutes, {
   messagesRouter as messagesApi,
 } from "./core/api/conversations/conversations.routes";
 import searchRoutes from "./core/api/search/search.routes";
+import dashboardRoutes from "./core/api/dashboard/dashboard.routes";
 
 import { errorHandler } from "./core/errors/errorHandler";
 import { globalLimiter } from "./config/security";
@@ -128,6 +129,7 @@ app.use("/share", shareRoutes);
 app.use("/settings", settingsRoutes);
 app.use("/conversations", conversationsRoutes);
 app.use("/search", searchRoutes);
+app.use("/dashboard", dashboardRoutes);
 
 // ===============
 // 404
