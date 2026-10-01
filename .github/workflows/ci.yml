@@ -44,6 +44,7 @@ jobs:
       EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
       EMAIL_FROM_NAME: ${{ secrets.EMAIL_FROM_NAME }}
       PLATFORM_FEE_PERCENT: ${{ secrets.PLATFORM_FEE_PERCENT }}
+      FIREBASE_SERVICE_ACCOUNT_BASE64: "dGVzdC1maXJlYmFzZS1zZXJ2aWNlLWFjY291bnQtZmFrZS1mb3ItY2ktb25seS10aGlzLWlzLWEtZHVtbXktYmFzZTY0LXN0cmluZy10aGF0LWlzLWxvbmdlci10aGFuLTEwMC1jaGFyYWN0ZXJzLXRvLXBhc3Mtem9kLXZhbGlkYXRpb24tYW5kLW5ldmVyLWJlLXVzZWQtaW4tdGVzdC1tb2Rl"
 
     steps:
       - name: Checkout code
