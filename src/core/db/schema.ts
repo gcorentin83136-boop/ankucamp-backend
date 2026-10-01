@@ -197,8 +197,8 @@ export const conversations = pgTable("conversations", {
   id: serial("id").primaryKey(),
   type: varchar("type", { length: 20 }).default("direct").notNull(),
   // 'direct' | 'group'
-  name: varchar("name", { length: 255 }), // Nom du groupe (null pour direct)
-  avatar_url: text("avatar_url"), // Avatar du groupe
+  name: varchar("name", { length: 255 }),
+  avatar_url: text("avatar_url"),
   created_by: integer("created_by").notNull(),
   last_message_at: timestamp("last_message_at"),
   last_message_preview: varchar("last_message_preview", { length: 200 }),
@@ -235,19 +235,14 @@ export const messages = pgTable("messages", {
   // 'text' | 'image' | 'file' | 'system'
   content: text("content").notNull(),
   media_url: text("media_url"),
-
-  // Réponse (quote)
   reply_to_message_id: integer("reply_to_message_id"),
-
-  // Édition / suppression
   edited_at: timestamp("edited_at"),
   deleted_at: timestamp("deleted_at"),
-
   created_at: timestamp("created_at").defaultNow(),
 });
 
 // ========================
-// MESSAGE READS (qui a lu quel message)
+// MESSAGE READS
 // ========================
 export const messageReads = pgTable("message_reads", {
   id: serial("id").primaryKey(),
@@ -257,7 +252,7 @@ export const messageReads = pgTable("message_reads", {
 });
 
 // ========================
-// MESSAGE REACTIONS (emoji)
+// MESSAGE REACTIONS
 // ========================
 export const messageReactions = pgTable("message_reactions", {
   id: serial("id").primaryKey(),
@@ -284,7 +279,7 @@ export const notifications = pgTable("notifications", {
 });
 
 // ========================
-// KYC REQUESTS (vérification pro)
+// KYC REQUESTS
 // ========================
 export const kycRequests = pgTable("kyc_requests", {
   id: serial("id").primaryKey(),
@@ -295,11 +290,8 @@ export const kycRequests = pgTable("kyc_requests", {
   // 'agriculteur' | 'artisan' | 'createur' | 'autre'
   siret: varchar("siret", { length: 14 }).notNull(),
   siret_verified: integer("siret_verified").default(0).notNull(),
-  // 0 = pas encore vérifié via API, 1 = validé
   siret_data: text("siret_data"),
-  // JSON stringifié du retour API (raison sociale, activité, etc.)
   documents: text("documents"),
-  // JSON array d'URLs Cloudinary (pièce d'identité, etc.)
   rejection_reason: text("rejection_reason"),
   admin_id: integer("admin_id"),
   reviewed_at: timestamp("reviewed_at"),
@@ -307,7 +299,7 @@ export const kycRequests = pgTable("kyc_requests", {
 });
 
 // ========================
-// PUSH SUBSCRIPTIONS (tokens FCM des appareils)
+// PUSH SUBSCRIPTIONS
 // ========================
 export const pushSubscriptions = pgTable("push_subscriptions", {
   id: serial("id").primaryKey(),
@@ -343,13 +335,13 @@ export const payments = pgTable("payments", {
 });
 
 // ========================
-// REFUND REQUESTS (demandes de remboursement)
+// REFUND REQUESTS
 // ========================
 export const refundRequests = pgTable("refund_requests", {
   id: serial("id").primaryKey(),
   order_id: integer("order_id").notNull(),
   payment_id: integer("payment_id").notNull(),
-  requested_by: integer("requested_by").notNull(), // buyer_id
+  requested_by: integer("requested_by").notNull(),
   reason: text("reason"),
   status: varchar("status", { length: 20 }).default("pending").notNull(),
   // 'pending' | 'approved' | 'rejected' | 'refunded' | 'failed'
@@ -507,7 +499,7 @@ export const accountDeletionRequests = pgTable("account_deletion_requests", {
 });
 
 // ========================
-// CONTENT REPORTS (signalements universels)
+// CONTENT REPORTS
 // ========================
 export const contentReports = pgTable("content_reports", {
   id: serial("id").primaryKey(),
@@ -533,7 +525,7 @@ export const contentReports = pgTable("content_reports", {
 export const events = pgTable("events", {
   id: serial("id").primaryKey(),
   organizer_id: integer("organizer_id").notNull(),
-  shop_id: integer("shop_id"), // optionnel : rattaché à une boutique
+  shop_id: integer("shop_id"),
   title: varchar("title", { length: 255 }).notNull(),
   description: text("description"),
   cover_url: text("cover_url"),
@@ -546,7 +538,7 @@ export const events = pgTable("events", {
   postal_code: varchar("postal_code", { length: 20 }),
   latitude: numeric("latitude", { precision: 10, scale: 7 }),
   longitude: numeric("longitude", { precision: 10, scale: 7 }),
-  capacity: integer("capacity"), // null = illimité
+  capacity: integer("capacity"),
   is_free: integer("is_free").default(1).notNull(),
   price: decimal("price", { precision: 10, scale: 2 }),
   status: varchar("status", { length: 20 }).default("published").notNull(),
@@ -564,5 +556,40 @@ export const eventRegistrations = pgTable("event_registrations", {
   user_id: integer("user_id").notNull(),
   status: varchar("status", { length: 20 }).default("registered").notNull(),
   // 'registered' | 'waitlist' | 'cancelled' | 'attended'
+  created_at: timestamp("created_at").defaultNow(),
+});
+
+// ========================
+// ARTICLES (blog / conseils)
+// ========================
+export const articles = pgTable("articles", {
+  id: serial("id").primaryKey(),
+  author_id: integer("author_id").notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  slug: varchar("slug", { length: 255 }).notNull().unique(),
+  excerpt: varchar("excerpt", { length: 500 }),
+  content: text("content").notNull(),
+  // markdown
+  cover_url: text("cover_url"),
+  tags: text("tags"),
+  // JSON array of strings
+  category: varchar("category", { length: 30 }).notNull(),
+  // 'recette' | 'conseil' | 'portrait' | 'actualite' | 'autre'
+  status: varchar("status", { length: 20 }).default("published").notNull(),
+  // 'draft' | 'published' | 'archived'
+  published_at: timestamp("published_at"),
+  views_count: integer("views_count").default(0).notNull(),
+  likes_count: integer("likes_count").default(0).notNull(),
+  created_at: timestamp("created_at").defaultNow(),
+  updated_at: timestamp("updated_at").defaultNow(),
+});
+
+// ========================
+// ARTICLE LIKES (toggle like)
+// ========================
+export const articleLikes = pgTable("article_likes", {
+  id: serial("id").primaryKey(),
+  article_id: integer("article_id").notNull(),
+  user_id: integer("user_id").notNull(),
   created_at: timestamp("created_at").defaultNow(),
 });
