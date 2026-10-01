@@ -56,8 +56,9 @@ async function getHiddenShopIds(): Promise<number[]> {
 /**
  * Enrichit un produit avec shop + owner + badges + rating.
  * Maps optionnels pour batch anti N+1.
+ * ✅ Exporté pour être réutilisable (wishlist, cart...).
  */
-async function enrichProduct(
+export async function enrichProduct(
   product: any,
   shopMap?: Map<number, any>,
   badgesMap?: Map<number, string[]>,

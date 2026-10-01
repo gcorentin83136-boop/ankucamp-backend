@@ -34,6 +34,7 @@ import geoRoutes from "./core/api/geo/geo.routes";
 import eventsRoutes from "./core/api/events/events.routes";
 import articlesRoutes from "./core/api/articles/articles.routes";
 import cartRoutes from "./core/api/cart/cart.routes";
+import wishlistRoutes from "./core/api/wishlist/wishlist.routes";
 
 import { errorHandler } from "./core/errors/errorHandler";
 import { globalLimiter } from "./config/security";
@@ -148,6 +149,7 @@ app.use("/geo", geoRoutes);
 app.use("/events", eventsRoutes);
 app.use("/articles", articlesRoutes);
 app.use("/cart", cartRoutes);
+app.use("/wishlist", wishlistRoutes);
 
 // ===============
 // 404
