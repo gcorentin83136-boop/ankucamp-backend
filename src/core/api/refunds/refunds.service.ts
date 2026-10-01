@@ -263,10 +263,13 @@ export async function approveRefund(
   }
 
   // 5. Met à jour la demande
+  // ✅ FIX : on passe directement à "refunded" (pas "approved")
+  // Car si Stripe a accepté, le remboursement est garanti.
+  // Le webhook charge.refunded reste un filet de sécurité (idempotent).
   await db
     .update(refundRequests)
     .set({
-      status: "approved",
+      status: "refunded",
       stripe_refund_id: stripeRefund.id,
       admin_id: adminId,
       admin_comment: adminComment ?? null,
@@ -309,7 +312,7 @@ export async function approveRefund(
   return {
     refund_id: refundId,
     stripe_refund_id: stripeRefund.id,
-    status: "approved",
+    status: "refunded",
   };
 }
 

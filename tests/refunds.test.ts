@@ -752,18 +752,21 @@ describe("Refunds — PUT /refunds/:id/approve", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
-    expect(res.body.status).toBe("approved");
+    // ✅ FIX : on attend maintenant "refunded" (au lieu de "approved")
+    expect(res.body.status).toBe("refunded");
     expect(res.body.stripe_refund_id).toBe("re_test_mock_refund");
   });
 
-  it("statut devient approved en DB", async () => {
+  // ✅ FIX : nom du test mis à jour
+  it("statut devient refunded en DB", async () => {
     const [r] = await db
       .select()
       .from(refundRequests)
       .where(eq(refundRequests.id, refundId))
       .limit(1);
 
-    expect(r.status).toBe("approved");
+    // ✅ FIX : on attend maintenant "refunded"
+    expect(r.status).toBe("refunded");
     expect(r.stripe_refund_id).toBe("re_test_mock_refund");
     expect(r.admin_id).toBe(adminId);
   });
