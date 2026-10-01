@@ -3,6 +3,10 @@ import { db } from "../../db";
 import { products, shops, shopSettings, users } from "../../db/schema";
 import { AppError } from "../../errors/AppError";
 import { getBadgesForUsers, getUserBadges } from "../badges/badges.service";
+import {
+  getBulkSellerRatings,
+  getSellerGlobalRating,
+} from "../reviews/reviews.service";
 import type {
   CreateProductInput,
   UpdateProductInput,
@@ -50,13 +54,14 @@ async function getHiddenShopIds(): Promise<number[]> {
 }
 
 /**
- * Enrichit un produit avec shop + owner + badges de l'owner.
- * `shopMap` et `ownerBadgesMap` optionnels (batch anti N+1).
+ * Enrichit un produit avec shop + owner + badges + rating.
+ * Maps optionnels pour batch anti N+1.
  */
 async function enrichProduct(
   product: any,
   shopMap?: Map<number, any>,
-  badgesMap?: Map<number, string[]>
+  badgesMap?: Map<number, string[]>,
+  ratingsMap?: Map<number, { average: number; count: number }>
 ) {
   let shop: any = null;
 
@@ -96,9 +101,13 @@ async function enrichProduct(
     ? badgesMap.get(owner.id) ?? []
     : await getUserBadges(owner.id);
 
+  const rating = ratingsMap
+    ? ratingsMap.get(owner.id) ?? { average: 0, count: 0 }
+    : await getSellerGlobalRating(owner.id);
+
   return {
     ...product,
-    shop: { ...shop, owner: { ...owner, badges } },
+    shop: { ...shop, owner: { ...owner, badges, rating } },
   };
 }
 
@@ -106,9 +115,6 @@ async function enrichProduct(
 // LECTURE
 // ============================================================
 
-/**
- * Liste tous les produits dont la boutique n'est PAS masquée (+ shop + owner + badges).
- */
 export async function getAllProducts() {
   const hiddenIds = await getHiddenShopIds();
 
@@ -131,8 +137,11 @@ export async function getAllProducts() {
 
   const ownerIds = shopRows.map((s) => s.owner_id);
   const badgesMap = await getBadgesForUsers(ownerIds);
+  const ratingsMap = await getBulkSellerRatings(ownerIds);
 
-  return Promise.all(rows.map((r) => enrichProduct(r, shopMap, badgesMap)));
+  return Promise.all(
+    rows.map((r) => enrichProduct(r, shopMap, badgesMap, ratingsMap))
+  );
 }
 
 export async function getProductsByShop(shopId: number) {

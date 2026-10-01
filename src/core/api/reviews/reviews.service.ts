@@ -152,7 +152,6 @@ export async function getReviewsByProduct(
     .limit(limit)
     .offset(offset);
 
-  // Batch badges (anti N+1)
   const badgesMap = await getBadgesForUsers(rows.map((r) => r.author_id));
 
   return rows.map((r) => ({
@@ -410,4 +409,74 @@ export async function getReviewById(reviewId: number) {
   }
 
   return review;
+}
+
+// ============================================================
+// NOTE GLOBALE VENDEUR (batch + single)
+// ============================================================
+
+/**
+ * Retourne la note globale d'un vendeur (moyenne + nombre d'avis).
+ * Exclut les avis signalés (is_flagged = 0).
+ */
+export async function getSellerGlobalRating(
+  sellerId: number
+): Promise<{ average: number; count: number }> {
+  const [row] = await db
+    .select({
+      avg: sql<number>`coalesce(avg(${reviews.rating}), 0)::numeric(3,1)`,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(reviews)
+    .where(
+      and(eq(reviews.seller_id, sellerId), eq(reviews.is_flagged, 0))
+    );
+
+  return {
+    average: Number(row?.avg ?? 0),
+    count: row?.count ?? 0,
+  };
+}
+
+/**
+ * Retourne les notes globales de plusieurs vendeurs (batch anti N+1).
+ * Les sellers sans avis sont renvoyés avec { average: 0, count: 0 }.
+ */
+export async function getBulkSellerRatings(
+  sellerIds: number[]
+): Promise<Map<number, { average: number; count: number }>> {
+  const result = new Map<number, { average: number; count: number }>();
+  if (sellerIds.length === 0) return result;
+
+  const uniqueIds = Array.from(new Set(sellerIds));
+
+  const rows = await db
+    .select({
+      seller_id: reviews.seller_id,
+      avg: sql<number>`coalesce(avg(${reviews.rating}), 0)::numeric(3,1)`,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(reviews)
+    .where(
+      and(
+        inArray(reviews.seller_id, uniqueIds),
+        eq(reviews.is_flagged, 0)
+      )
+    )
+    .groupBy(reviews.seller_id);
+
+  for (const r of rows) {
+    result.set(r.seller_id, {
+      average: Number(r.avg ?? 0),
+      count: r.count ?? 0,
+    });
+  }
+
+  for (const id of uniqueIds) {
+    if (!result.has(id)) {
+      result.set(id, { average: 0, count: 0 });
+    }
+  }
+
+  return result;
 }

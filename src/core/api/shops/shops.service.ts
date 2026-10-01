@@ -3,6 +3,10 @@ import { db } from "../../db";
 import { shops, shopSettings, users } from "../../db/schema";
 import { AppError } from "../../errors/AppError";
 import { getBadgesForUsers, getUserBadges } from "../badges/badges.service";
+import {
+  getBulkSellerRatings,
+  getSellerGlobalRating,
+} from "../reviews/reviews.service";
 import type { CreateShopInput, UpdateShopInput } from "./shops.validation";
 
 // ============================================================
@@ -18,10 +22,14 @@ async function getHiddenShopIds(): Promise<number[]> {
 }
 
 /**
- * Enrichit un shop avec les infos de l'owner + ses badges.
- * `badgesMap` optionnel (batch anti N+1).
+ * Enrichit un shop avec owner + badges + rating.
+ * Maps optionnels pour batch anti N+1.
  */
-async function enrichShop(shop: any, badgesMap?: Map<number, string[]>) {
+async function enrichShop(
+  shop: any,
+  badgesMap?: Map<number, string[]>,
+  ratingsMap?: Map<number, { average: number; count: number }>
+) {
   const [owner] = await db
     .select({
       id: users.id,
@@ -43,16 +51,17 @@ async function enrichShop(shop: any, badgesMap?: Map<number, string[]>) {
     ? badgesMap.get(owner.id) ?? []
     : await getUserBadges(owner.id);
 
-  return { ...shop, owner: { ...owner, badges } };
+  const rating = ratingsMap
+    ? ratingsMap.get(owner.id) ?? { average: 0, count: 0 }
+    : await getSellerGlobalRating(owner.id);
+
+  return { ...shop, owner: { ...owner, badges, rating } };
 }
 
 // ============================================================
 // LECTURE
 // ============================================================
 
-/**
- * Liste toutes les boutiques NON MASQUÉES (+ owner + badges).
- */
 export async function getAllShops() {
   const hiddenIds = await getHiddenShopIds();
 
@@ -64,8 +73,11 @@ export async function getAllShops() {
           .from(shops)
           .where(notInArray(shops.id, hiddenIds));
 
-  const badgesMap = await getBadgesForUsers(rows.map((r) => r.owner_id));
-  return Promise.all(rows.map((r) => enrichShop(r, badgesMap)));
+  const ownerIds = rows.map((r) => r.owner_id);
+  const badgesMap = await getBadgesForUsers(ownerIds);
+  const ratingsMap = await getBulkSellerRatings(ownerIds);
+
+  return Promise.all(rows.map((r) => enrichShop(r, badgesMap, ratingsMap)));
 }
 
 export async function getShopById(id: number) {
@@ -79,9 +91,6 @@ export async function getShopById(id: number) {
   return enrichShop(shop);
 }
 
-/**
- * Liste des boutiques d'un owner (sans enrichissement : c'est lui-même).
- */
 export async function getShopsByOwner(ownerId: number) {
   return db.select().from(shops).where(eq(shops.owner_id, ownerId));
 }
