@@ -526,3 +526,43 @@ export const contentReports = pgTable("content_reports", {
   resolved_at: timestamp("resolved_at"),
   created_at: timestamp("created_at").defaultNow(),
 });
+
+// ========================
+// EVENTS (marchés, ateliers, salons...)
+// ========================
+export const events = pgTable("events", {
+  id: serial("id").primaryKey(),
+  organizer_id: integer("organizer_id").notNull(),
+  shop_id: integer("shop_id"), // optionnel : rattaché à une boutique
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description"),
+  cover_url: text("cover_url"),
+  type: varchar("type", { length: 30 }).notNull(),
+  // 'marche' | 'atelier' | 'salon' | 'porte_ouverte' | 'degustation' | 'autre'
+  start_at: timestamp("start_at").notNull(),
+  end_at: timestamp("end_at"),
+  address: text("address"),
+  city: varchar("city", { length: 100 }),
+  postal_code: varchar("postal_code", { length: 20 }),
+  latitude: numeric("latitude", { precision: 10, scale: 7 }),
+  longitude: numeric("longitude", { precision: 10, scale: 7 }),
+  capacity: integer("capacity"), // null = illimité
+  is_free: integer("is_free").default(1).notNull(),
+  price: decimal("price", { precision: 10, scale: 2 }),
+  status: varchar("status", { length: 20 }).default("published").notNull(),
+  // 'draft' | 'published' | 'cancelled' | 'completed'
+  created_at: timestamp("created_at").defaultNow(),
+  updated_at: timestamp("updated_at").defaultNow(),
+});
+
+// ========================
+// EVENT REGISTRATIONS (inscriptions)
+// ========================
+export const eventRegistrations = pgTable("event_registrations", {
+  id: serial("id").primaryKey(),
+  event_id: integer("event_id").notNull(),
+  user_id: integer("user_id").notNull(),
+  status: varchar("status", { length: 20 }).default("registered").notNull(),
+  // 'registered' | 'waitlist' | 'cancelled' | 'attended'
+  created_at: timestamp("created_at").defaultNow(),
+});

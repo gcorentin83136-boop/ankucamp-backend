@@ -31,6 +31,7 @@ import badgesRoutes from "./core/api/badges/badges.routes";
 import reportsRoutes from "./core/api/moderation/reports.routes";
 import reportsAdminRoutes from "./core/api/moderation/reports.admin.routes";
 import geoRoutes from "./core/api/geo/geo.routes";
+import eventsRoutes from "./core/api/events/events.routes";
 
 import { errorHandler } from "./core/errors/errorHandler";
 import { globalLimiter } from "./config/security";
@@ -142,6 +143,7 @@ app.use("/admin/kyc", kycAdminRoutes);
 app.use("/reports", reportsRoutes);
 app.use("/admin/moderation", reportsAdminRoutes);
 app.use("/geo", geoRoutes);
+app.use("/events", eventsRoutes);
 
 // ===============
 // 404
