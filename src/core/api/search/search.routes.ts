@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { asyncHandler } from "../../errors/asyncHandler";
+import { searchLimiter } from "../../../config/security";
 import {
   users,
   shops,
@@ -9,6 +10,12 @@ import {
 } from "./search.controller";
 
 const router = Router();
+
+// ============================================================
+// RATE LIMITING : 30 req/min par user/IP
+// ============================================================
+
+router.use(searchLimiter);
 
 // ============================================================
 // ROUTES PUBLIQUES (pas d'auth)

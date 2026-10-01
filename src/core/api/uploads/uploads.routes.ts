@@ -2,6 +2,7 @@ import { Router } from "express";
 import { authMiddleware } from "../../middlewares/auth.middleware";
 import { upload } from "../../middlewares/upload.middleware";
 import { asyncHandler } from "../../errors/asyncHandler";
+import { uploadsLimiter } from "../../../config/security";
 import {
   uploadAvatar,
   uploadCover,
@@ -11,6 +12,12 @@ import {
 } from "./uploads.controller";
 
 const router = Router();
+
+// ============================================================
+// RATE LIMITING : 10 uploads/min par user
+// ============================================================
+
+router.use(uploadsLimiter);
 
 // ============================================================
 // AVATAR
@@ -57,7 +64,7 @@ router.post(
 );
 
 // ============================================================
-// POST MEDIA (retourne juste l'URL)
+// POST MEDIA
 // ============================================================
 
 router.post(

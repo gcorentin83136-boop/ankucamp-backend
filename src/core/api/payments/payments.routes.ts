@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { authMiddleware } from "../../middlewares/auth.middleware";
 import { asyncHandler } from "../../errors/asyncHandler";
+import { checkoutLimiter } from "../../../config/security";
 import {
   checkout,
   webhook,
@@ -16,7 +17,13 @@ const router = Router();
 router.post("/webhook", asyncHandler(webhook));
 
 // Routes protégées (paiement)
-router.post("/checkout", authMiddleware, asyncHandler(checkout));
+// ✅ Rate limiting sur le checkout uniquement
+router.post(
+  "/checkout",
+  authMiddleware,
+  checkoutLimiter,
+  asyncHandler(checkout)
+);
 router.get("/me", authMiddleware, asyncHandler(listMine));
 router.get("/order/:orderId", authMiddleware, asyncHandler(getOneByOrder));
 
