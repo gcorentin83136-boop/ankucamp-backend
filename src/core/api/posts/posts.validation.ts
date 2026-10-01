@@ -15,9 +15,7 @@ export const createPostSchema = z.object({
     .max(4, "Maximum 4 médias par post")
     .optional()
     .default([]),
-  visibility: z
-    .enum(["public", "friends", "private"])
-    .default("public"),
+  visibility: z.enum(["public", "friends", "private"]).default("public"),
 });
 
 export type CreatePostInput = z.infer<typeof createPostSchema>;
@@ -27,11 +25,7 @@ export type CreatePostInput = z.infer<typeof createPostSchema>;
 // ============================================================
 
 export const updatePostSchema = z.object({
-  content: z
-    .string()
-    .max(5000)
-    .optional()
-    .nullable(),
+  content: z.string().max(5000).optional().nullable(),
   visibility: z.enum(["public", "friends", "private"]).optional(),
 });
 
@@ -61,12 +55,25 @@ export const sharePostSchema = z.object({
     .max(2000, "Le commentaire de partage ne peut pas dépasser 2000 caractères")
     .optional()
     .nullable(),
-  visibility: z
-    .enum(["public", "friends", "private"])
-    .default("public"),
+  visibility: z.enum(["public", "friends", "private"]).default("public"),
 });
 
 export type SharePostInput = z.infer<typeof sharePostSchema>;
+
+// ============================================================
+// PARTAGE D'UN ÉVÉNEMENT
+// ============================================================
+
+export const shareEventSchema = z.object({
+  share_comment: z
+    .string()
+    .max(2000, "Le commentaire de partage ne peut pas dépasser 2000 caractères")
+    .optional()
+    .nullable(),
+  visibility: z.enum(["public", "friends", "private"]).default("public"),
+});
+
+export type ShareEventInput = z.infer<typeof shareEventSchema>;
 
 // ============================================================
 // PAGINATION

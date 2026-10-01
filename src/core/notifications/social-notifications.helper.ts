@@ -120,6 +120,7 @@ export async function notifyNewFollower(
     `/dashboard/followers`
   );
 }
+
 /**
  * Notifie un user qu'il a reçu un nouveau message.
  */
@@ -136,5 +137,79 @@ export async function notifyNewMessage(
     `💬 Nouveau message de ${senderFirstName}`,
     preview,
     `/messages/${conversationId}`
+  );
+}
+
+// ============================================================
+// NOTIFICATIONS ÉVÉNEMENTS (réseau social)
+// ============================================================
+
+/**
+ * Notifie les amis quand un user organise un nouvel événement.
+ */
+export async function notifyFriendsNewEvent(
+  friendIds: number[],
+  eventId: number,
+  eventTitle: string,
+  organizerName: string
+): Promise<void> {
+  if (friendIds.length === 0) return;
+
+  await Promise.all(
+    friendIds.map((friendId) =>
+      notify(
+        friendId,
+        "social",
+        `📅 ${organizerName} organise un événement`,
+        `"${eventTitle}" — clique pour voir les détails.`,
+        `/events/${eventId}`
+      ).catch((err) =>
+        console.error(`❌ Erreur notif event ami ${friendId}:`, err)
+      )
+    )
+  );
+}
+
+/**
+ * Notifie les amis quand un user s'inscrit à un événement.
+ */
+export async function notifyFriendsNewRegistration(
+  friendIds: number[],
+  eventId: number,
+  eventTitle: string,
+  friendName: string
+): Promise<void> {
+  if (friendIds.length === 0) return;
+
+  await Promise.all(
+    friendIds.map((friendId) =>
+      notify(
+        friendId,
+        "social",
+        `🎟️ ${friendName} participe à un événement`,
+        `"${eventTitle}" — rejoins-le !`,
+        `/events/${eventId}`
+      ).catch((err) =>
+        console.error(`❌ Erreur notif inscription ami ${friendId}:`, err)
+      )
+    )
+  );
+}
+
+/**
+ * Notifie l'organisateur quand quelqu'un like son événement.
+ */
+export async function notifyEventLiked(
+  organizerId: number,
+  eventId: number,
+  eventTitle: string,
+  likerName: string
+): Promise<void> {
+  await notify(
+    organizerId,
+    "social",
+    `❤️ ${likerName} a aimé ton événement`,
+    `"${eventTitle}"`,
+    `/events/${eventId}`
   );
 }

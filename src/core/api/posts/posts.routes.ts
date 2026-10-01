@@ -18,6 +18,8 @@ import {
   comments,
   removeComment,
   share,
+  shareEventCtrl,
+  likeEvent,
 } from "./posts.controller";
 
 const router = Router();
@@ -30,11 +32,24 @@ router.get("/feed", authMiddleware, asyncHandler(feed));
 router.get("/me", authMiddleware, asyncHandler(mine));
 router.post("/", authMiddleware, asyncHandler(create));
 
+// Partager un événement
+router.post(
+  "/share-event/:eventId",
+  authMiddleware,
+  asyncHandler(shareEventCtrl)
+);
+
+// Like sur événement (via /posts pour cohérence front)
+router.post(
+  "/events/:eventId/like",
+  authMiddleware,
+  asyncHandler(likeEvent)
+);
+
 // ============================================================
 // ROUTES DYNAMIQUES /:id
 // ============================================================
 
-// ✅ FIX : auth optionnelle → permet de voir ses propres posts privés
 router.get("/:id", authOptionalMiddleware, asyncHandler(getOne));
 router.patch("/:id", authMiddleware, asyncHandler(update));
 router.delete("/:id", authMiddleware, asyncHandler(remove));
@@ -52,14 +67,13 @@ router.delete(
   asyncHandler(removeComment)
 );
 
-// Partage
+// Partage de post
 router.post("/:id/share", authMiddleware, asyncHandler(share));
 
 // ============================================================
 // ROUTES DYNAMIQUES SPÉCIALES
 // ============================================================
 
-// Posts d'un user (déclaré EN DERNIER pour ne pas capturer /:id)
 router.get("/user/:userId", authMiddleware, asyncHandler(byUser));
 
 export default router;

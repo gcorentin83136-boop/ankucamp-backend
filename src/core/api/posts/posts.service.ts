@@ -1,4 +1,4 @@
-import { eq, and, desc, or, inArray, sql } from "drizzle-orm";
+import { eq, and, desc, or, inArray, sql, gte } from "drizzle-orm";
 import { db } from "../../db";
 import {
   posts,
@@ -7,12 +7,15 @@ import {
   postShares,
   users,
   friendships,
+  events,
+  eventLikes,
 } from "../../db/schema";
 import { AppError } from "../../errors/AppError";
 import {
   notifyPostLiked,
   notifyPostCommented,
   notifyCommentReplied,
+  notifyEventLiked,
 } from "../../notifications/social-notifications.helper";
 import { getBadgesForUsers, getUserBadges } from "../badges/badges.service";
 import type {
@@ -20,6 +23,7 @@ import type {
   UpdatePostInput,
   CreateCommentInput,
   SharePostInput,
+  ShareEventInput,
   ListPostsQuery,
 } from "./posts.validation";
 
@@ -73,10 +77,35 @@ async function areFriends(userA: number, userB: number): Promise<boolean> {
   return !!row;
 }
 
-/**
- * Enrichit un post avec les infos auteur + liked_by_me + badges.
- * `badgesMap` est optionnel (batch anti N+1 pour les listes).
- */
+async function enrichEventForPost(event: any) {
+  const [organizer] = await db
+    .select({
+      id: users.id,
+      first_name: users.first_name,
+      last_name: users.last_name,
+      username: users.username,
+      avatar_url: users.avatar_url,
+    })
+    .from(users)
+    .where(eq(users.id, event.organizer_id))
+    .limit(1);
+
+  const [likesCount] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(eventLikes)
+    .where(eq(eventLikes.event_id, event.id));
+
+  return {
+    ...event,
+    latitude: event.latitude !== null ? Number(event.latitude) : null,
+    longitude: event.longitude !== null ? Number(event.longitude) : null,
+    price: event.price !== null ? Number(event.price) : null,
+    is_free: event.is_free === 1,
+    organizer,
+    likes_count: likesCount?.count ?? 0,
+  };
+}
+
 async function enrichPost(
   post: any,
   viewerId?: number,
@@ -147,12 +176,26 @@ async function enrichPost(
     }
   }
 
+  let sharedEvent: any = null;
+  if (post.shared_event_id) {
+    const [ev] = await db
+      .select()
+      .from(events)
+      .where(eq(events.id, post.shared_event_id))
+      .limit(1);
+
+    if (ev) {
+      sharedEvent = await enrichEventForPost(ev);
+    }
+  }
+
   return {
     ...post,
     media_urls: post.media_urls ? JSON.parse(post.media_urls) : [],
     author: author ? { ...author, badges: authorBadges } : null,
     liked_by_me: likedByMe,
     shared_from: sharedFrom,
+    shared_event: sharedEvent,
   };
 }
 
@@ -237,7 +280,32 @@ export async function getFeed(viewerId: number, query: ListPostsQuery) {
     .offset(offset);
 
   const badgesMap = await getBadgesForUsers(rows.map((r) => r.author_id));
-  return Promise.all(rows.map((p) => enrichPost(p, viewerId, badgesMap)));
+  const postsResult = await Promise.all(
+    rows.map((p) => enrichPost(p, viewerId, badgesMap))
+  );
+
+  // Événements à venir organisés par mes amis
+  let eventsFromFriends: any[] = [];
+  if (friendIds.length > 0) {
+    const eventRows = await db
+      .select()
+      .from(events)
+      .where(
+        and(
+          inArray(events.organizer_id, friendIds),
+          eq(events.status, "published"),
+          gte(events.start_at, new Date())
+        )
+      )
+      .orderBy(events.start_at)
+      .limit(5);
+
+    eventsFromFriends = await Promise.all(
+      eventRows.map((ev) => enrichEventForPost(ev))
+    );
+  }
+
+  return { posts: postsResult, events_from_friends: eventsFromFriends };
 }
 
 export async function getUserPosts(
@@ -612,7 +680,7 @@ export async function deleteComment(commentId: number, userId: number) {
 }
 
 // ============================================================
-// PARTAGE
+// PARTAGE DE POST
 // ============================================================
 
 export async function sharePost(
@@ -650,4 +718,97 @@ export async function sharePost(
   });
 
   return enrichPost(created, authorId);
+}
+
+// ============================================================
+// PARTAGE D'ÉVÉNEMENT
+// ============================================================
+
+export async function shareEvent(
+  eventId: number,
+  authorId: number,
+  input: ShareEventInput
+) {
+  const [event] = await db
+    .select()
+    .from(events)
+    .where(eq(events.id, eventId))
+    .limit(1);
+
+  if (!event) throw new AppError("Événement introuvable", 404);
+  if (event.status === "cancelled") {
+    throw new AppError("Impossible de partager un événement annulé", 400);
+  }
+
+  const [created] = await db
+    .insert(posts)
+    .values({
+      author_id: authorId,
+      content: input.share_comment ?? null,
+      shared_event_id: event.id,
+      share_comment: input.share_comment ?? null,
+      visibility: input.visibility,
+    })
+    .returning();
+
+  return enrichPost(created, authorId);
+}
+
+// ============================================================
+// LIKES SUR ÉVÉNEMENT (toggle)
+// ============================================================
+
+export async function toggleEventLike(eventId: number, userId: number) {
+  const [event] = await db
+    .select()
+    .from(events)
+    .where(eq(events.id, eventId))
+    .limit(1);
+
+  if (!event) throw new AppError("Événement introuvable", 404);
+
+  const [existing] = await db
+    .select()
+    .from(eventLikes)
+    .where(
+      and(eq(eventLikes.event_id, eventId), eq(eventLikes.user_id, userId))
+    )
+    .limit(1);
+
+  if (existing) {
+    await db.delete(eventLikes).where(eq(eventLikes.id, existing.id));
+
+    const [countRow] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(eventLikes)
+      .where(eq(eventLikes.event_id, eventId));
+
+    return { liked: false, likes_count: countRow?.count ?? 0 };
+  } else {
+    await db.insert(eventLikes).values({ event_id: eventId, user_id: userId });
+
+    const [countRow] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(eventLikes)
+      .where(eq(eventLikes.event_id, eventId));
+
+    if (event.organizer_id !== userId) {
+      const [liker] = await db
+        .select({ first_name: users.first_name, last_name: users.last_name })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+
+      if (liker) {
+        notifyEventLiked(
+          event.organizer_id,
+          eventId,
+          event.title,
+          `${liker.first_name} ${liker.last_name}`
+        ).catch((err) => console.error("❌ Erreur notif like event:", err));
+      }
+    }
+
+    return { liked: true, likes_count: countRow?.count ?? 0 };
+  }
 }

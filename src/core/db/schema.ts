@@ -47,7 +47,6 @@ export const users = pgTable("users", {
   verification_status: varchar("verification_status", { length: 20 })
     .default("none")
     .notNull(),
-  // 'none' | 'pending' | 'verified' | 'rejected'
   created_at: timestamp("created_at").defaultNow(),
 });
 
@@ -58,7 +57,6 @@ export const userBadges = pgTable("user_badges", {
   id: serial("id").primaryKey(),
   user_id: integer("user_id").notNull(),
   badge: varchar("badge", { length: 50 }).notNull(),
-  // 'verified' | 'agriculteur' | 'artisan' | 'createur' | 'bio' | 'producteur_local'
   granted_by: integer("granted_by"),
   granted_at: timestamp("granted_at").defaultNow(),
   revoked_at: timestamp("revoked_at"),
@@ -342,6 +340,7 @@ export const posts = pgTable("posts", {
   media_urls: text("media_urls"),
   visibility: varchar("visibility", { length: 20 }).default("public").notNull(),
   shared_from_post_id: integer("shared_from_post_id"),
+  shared_event_id: integer("shared_event_id"),
   share_comment: text("share_comment"),
   likes_count: integer("likes_count").default(0).notNull(),
   comments_count: integer("comments_count").default(0).notNull(),
@@ -592,7 +591,6 @@ export const promoCodes = pgTable("promo_codes", {
   code: varchar("code", { length: 50 }).notNull().unique(),
   description: varchar("description", { length: 255 }),
   type: varchar("type", { length: 20 }).notNull(),
-  // 'percent' | 'fixed'
   value: decimal("value", { precision: 10, scale: 2 }).notNull(),
   min_amount: decimal("min_amount", { precision: 10, scale: 2 }),
   max_uses: integer("max_uses"),
@@ -602,7 +600,6 @@ export const promoCodes = pgTable("promo_codes", {
   valid_until: timestamp("valid_until"),
   is_active: integer("is_active").default(1).notNull(),
   seller_id: integer("seller_id"),
-  // null = plateforme entiere, sinon code d'un vendeur
   created_by: integer("created_by").notNull(),
   created_at: timestamp("created_at").defaultNow(),
 });
@@ -616,4 +613,14 @@ export const promoUses = pgTable("promo_uses", {
   user_id: integer("user_id").notNull(),
   order_id: integer("order_id"),
   used_at: timestamp("used_at").defaultNow(),
+});
+
+// ========================
+// EVENT LIKES (toggle like sur événement)
+// ========================
+export const eventLikes = pgTable("event_likes", {
+  id: serial("id").primaryKey(),
+  event_id: integer("event_id").notNull(),
+  user_id: integer("user_id").notNull(),
+  created_at: timestamp("created_at").defaultNow(),
 });

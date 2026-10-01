@@ -1,6 +1,7 @@
 import {
   eq,
   and,
+  or,
   desc,
   asc,
   sql,
@@ -15,9 +16,14 @@ import {
   eventRegistrations,
   users,
   notifications,
+  friendships,
 } from "../../db/schema";
 import { AppError } from "../../errors/AppError";
 import { geocodeAddress } from "../geo/geocoding.service";
+import {
+  notifyFriendsNewEvent,
+  notifyFriendsNewRegistration,
+} from "../../notifications/social-notifications.helper";
 import type {
   CreateEventInput,
   UpdateEventInput,
@@ -28,6 +34,28 @@ import type {
 // ============================================================
 // HELPERS
 // ============================================================
+
+async function getFriendIds(userId: number): Promise<number[]> {
+  const rows = await db
+    .select({
+      requester_id: friendships.requester_id,
+      receiver_id: friendships.receiver_id,
+    })
+    .from(friendships)
+    .where(
+      and(
+        or(
+          eq(friendships.requester_id, userId),
+          eq(friendships.receiver_id, userId)
+        ),
+        eq(friendships.status, "accepted")
+      )
+    );
+
+  return rows.map((r) =>
+    r.requester_id === userId ? r.receiver_id : r.requester_id
+  );
+}
 
 async function getRegistrationsCount(eventId: number): Promise<number> {
   const [row] = await db
@@ -329,6 +357,39 @@ export async function createEvent(
     })
     .returning();
 
+  // Notifier les amis de l'organisateur (fire & forget)
+  if (created.status === "published") {
+    try {
+      const friendIds = await getFriendIds(organizerId);
+
+      if (friendIds.length > 0) {
+        const [organizer] = await db
+          .select({
+            first_name: users.first_name,
+            last_name: users.last_name,
+          })
+          .from(users)
+          .where(eq(users.id, organizerId))
+          .limit(1);
+
+        const organizerName = organizer
+          ? `${organizer.first_name} ${organizer.last_name}`
+          : "Un ami";
+
+        notifyFriendsNewEvent(
+          friendIds,
+          created.id,
+          created.title,
+          organizerName
+        ).catch((err) =>
+          console.error("❌ Erreur notif event amis:", err)
+        );
+      }
+    } catch (err) {
+      console.error("❌ Erreur traitement notif event amis:", err);
+    }
+  }
+
   return enrichEvent(created, organizerId);
 }
 
@@ -505,6 +566,37 @@ export async function registerToEvent(eventId: number, userId: number) {
   });
 
   await notifyOrganizer(event.organizer_id, event.title, userId);
+
+  // Notifier les amis de l'inscrit
+  try {
+    const friendIds = await getFriendIds(userId);
+
+    if (friendIds.length > 0) {
+      const [friend] = await db
+        .select({
+          first_name: users.first_name,
+          last_name: users.last_name,
+        })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+
+      const friendName = friend
+        ? `${friend.first_name} ${friend.last_name}`
+        : "Un ami";
+
+      notifyFriendsNewRegistration(
+        friendIds,
+        event.id,
+        event.title,
+        friendName
+      ).catch((err) =>
+        console.error("❌ Erreur notif inscription amis:", err)
+      );
+    }
+  } catch (err) {
+    console.error("❌ Erreur traitement notif inscription amis:", err);
+  }
 
   return { success: true, status };
 }
