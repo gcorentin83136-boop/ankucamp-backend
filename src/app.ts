@@ -25,6 +25,9 @@ import conversationsRoutes, {
 } from "./core/api/conversations/conversations.routes";
 import searchRoutes from "./core/api/search/search.routes";
 import dashboardRoutes from "./core/api/dashboard/dashboard.routes";
+import kycRoutes from "./core/api/kyc/kyc.routes";
+import kycAdminRoutes from "./core/api/kyc/kyc.admin.routes";
+import badgesRoutes from "./core/api/badges/badges.routes";
 
 import { errorHandler } from "./core/errors/errorHandler";
 import { globalLimiter } from "./config/security";
@@ -114,6 +117,7 @@ app.get("/", (_req, res) => {
 app.use("/health", healthRoutes);
 app.use("/auth", authRoutes);
 app.use("/users", usersRoutes);
+app.use("/users", badgesRoutes);
 app.use("/shops", shopsRoutes);
 app.use("/products", productsRoutes);
 app.use("/orders", ordersRoutes);
@@ -130,6 +134,8 @@ app.use("/settings", settingsRoutes);
 app.use("/conversations", conversationsRoutes);
 app.use("/search", searchRoutes);
 app.use("/dashboard", dashboardRoutes);
+app.use("/kyc", kycRoutes);
+app.use("/admin/kyc", kycAdminRoutes);
 
 // ===============
 // 404

@@ -1,0 +1,242 @@
+﻿Structure du dossier pour le volume OS
+Le numÚro de sÚrie du volume est AE43-9B93
+C:\ANKU\BACKEND\SRC
+|   app.ts
+|   server.ts
+|   
++---config
+|       cloudinary.ts
+|       env.ts
+|       firebase.ts
+|       logger.ts
+|       passport.ts
+|       security.ts
+|       stripe.ts
+|       
++---core
+|   +---api
+|   |   +---auth
+|   |   |       auth.controller.ts
+|   |   |       auth.emails.ts
+|   |   |       auth.oauth.ts
+|   |   |       auth.routes.ts
+|   |   |       auth.service.ts
+|   |   |       auth.validation.ts
+|   |   |       
+|   |   +---conversations
+|   |   |       conversations.controller.ts
+|   |   |       conversations.routes.ts
+|   |   |       conversations.service.ts
+|   |   |       conversations.validation.ts
+|   |   |       
+|   |   +---dashboard
+|   |   |   |   dashboard.routes.ts
+|   |   |   |   dashboard.validation.ts
+|   |   |   |   
+|   |   |   +---admin
+|   |   |   |       admin.controller.ts
+|   |   |   |       admin.service.ts
+|   |   |   |       
+|   |   |   +---buyer
+|   |   |   |       buyer.controller.ts
+|   |   |   |       buyer.service.ts
+|   |   |   |       
+|   |   |   \---seller
+|   |   |           seller.controller.ts
+|   |   |           seller.service.ts
+|   |   |           
+|   |   +---follows
+|   |   |       follows.controller.ts
+|   |   |       follows.routes.ts
+|   |   |       follows.service.ts
+|   |   |       follows.validation.ts
+|   |   |       
+|   |   +---friends
+|   |   |       friends.controller.ts
+|   |   |       friends.routes.ts
+|   |   |       friends.service.ts
+|   |   |       friends.validation.ts
+|   |   |       
+|   |   +---health
+|   |   |       health.controller.ts
+|   |   |       health.routes.ts
+|   |   |       
+|   |   +---notifications
+|   |   |   |   notifications.controller.ts
+|   |   |   |   notifications.routes.ts
+|   |   |   |   notifications.service.ts
+|   |   |   |   
+|   |   |   \---push
+|   |   |           push.controller.ts
+|   |   |           push.routes.ts
+|   |   |           push.service.ts
+|   |   |           push.validation.ts
+|   |   |           
+|   |   +---orders
+|   |   |       orders.controller.ts
+|   |   |       orders.emails.ts
+|   |   |       orders.routes.ts
+|   |   |       orders.scheduler.ts
+|   |   |       orders.service.ts
+|   |   |       orders.validation.ts
+|   |   |       
+|   |   +---payments
+|   |   |       payments.controller.ts
+|   |   |       payments.routes.ts
+|   |   |       payments.service.ts
+|   |   |       payments.validation.ts
+|   |   |       
+|   |   +---posts
+|   |   |       posts.controller.ts
+|   |   |       posts.routes.ts
+|   |   |       posts.service.ts
+|   |   |       posts.validation.ts
+|   |   |       
+|   |   +---products
+|   |   |       products.controller.ts
+|   |   |       products.routes.ts
+|   |   |       products.service.ts
+|   |   |       products.validation.ts
+|   |   |       
+|   |   +---refunds
+|   |   |       refunds.controller.ts
+|   |   |       refunds.routes.ts
+|   |   |       refunds.service.ts
+|   |   |       refunds.validation.ts
+|   |   |       
+|   |   +---reviews
+|   |   |       reviews.controller.ts
+|   |   |       reviews.routes.ts
+|   |   |       reviews.service.ts
+|   |   |       reviews.validation.ts
+|   |   |       
+|   |   +---search
+|   |   |       search.controller.ts
+|   |   |       search.routes.ts
+|   |   |       search.service.ts
+|   |   |       search.validation.ts
+|   |   |       
+|   |   +---settings
+|   |   |   |   settings.routes.ts
+|   |   |   |   
+|   |   |   +---account
+|   |   |   |       account.controller.ts
+|   |   |   |       account.routes.ts
+|   |   |   |       account.service.ts
+|   |   |   |       account.validation.ts
+|   |   |   |       
+|   |   |   +---gdpr
+|   |   |   |       accountDeletion.scheduler.ts
+|   |   |   |       gdpr.controller.ts
+|   |   |   |       gdpr.routes.ts
+|   |   |   |       gdpr.service.ts
+|   |   |   |       gdpr.validation.ts
+|   |   |   |       
+|   |   |   +---notifications
+|   |   |   |       notifications.controller.ts
+|   |   |   |       notifications.routes.ts
+|   |   |   |       notifications.service.ts
+|   |   |   |       notifications.validation.ts
+|   |   |   |       
+|   |   |   +---privacy
+|   |   |   |       privacy.controller.ts
+|   |   |   |       privacy.routes.ts
+|   |   |   |       privacy.service.ts
+|   |   |   |       privacy.validation.ts
+|   |   |   |       
+|   |   |   +---sessions
+|   |   |   |       sessions.controller.ts
+|   |   |   |       sessions.routes.ts
+|   |   |   |       sessions.service.ts
+|   |   |   |       sessions.validation.ts
+|   |   |   |       
+|   |   |   \---shop
+|   |   |           shop.controller.ts
+|   |   |           shop.routes.ts
+|   |   |           shop.service.ts
+|   |   |           shop.validation.ts
+|   |   |           
+|   |   +---share
+|   |   |       share.controller.ts
+|   |   |       share.routes.ts
+|   |   |       share.service.ts
+|   |   |       share.validation.ts
+|   |   |       
+|   |   +---shops
+|   |   |       shops.controller.ts
+|   |   |       shops.routes.ts
+|   |   |       shops.service.ts
+|   |   |       shops.validation.ts
+|   |   |       
+|   |   +---uploads
+|   |   |       uploads.controller.ts
+|   |   |       uploads.routes.ts
+|   |   |       
+|   |   \---users
+|   |           users.controller.ts
+|   |           users.routes.ts
+|   |           users.service.ts
+|   |           users.validation.ts
+|   |           
+|   +---db
+|   |       index.ts
+|   |       schema.ts
+|   |       
+|   +---emails
+|   |   |   email.service.ts
+|   |   |   invoice.ts
+|   |   |   
+|   |   +---layouts
+|   |   |       baseLayout.ts
+|   |   |       components.ts
+|   |   |       theme.ts
+|   |   |       
+|   |   \---templates
+|   |           accountDeletionScheduled.ts
+|   |           dataExport.ts
+|   |           forgotPassword.ts
+|   |           invoiceResent.ts
+|   |           orderCancelled.ts
+|   |           orderConfirmation.ts
+|   |           orderDelivered.ts
+|   |           orderReviewRequest.ts
+|   |           orderShipped.ts
+|   |           sellerNewOrder.ts
+|   |           welcome.ts
+|   |           
+|   +---errors
+|   |       AppError.ts
+|   |       asyncHandler.ts
+|   |       errorHandler.ts
+|   |       
+|   +---legal
+|   |   \---templates
+|   |           cgu.md
+|   |           cgv.md
+|   |           cookies.md
+|   |           legal-notice.md
+|   |           privacy.md
+|   |           
+|   +---middlewares
+|   |       auth.middleware.ts
+|   |       role.middleware.ts
+|   |       upload.middleware.ts
+|   |       
+|   +---notifications
+|   |       notifications.helper.ts
+|   |       social-notifications.helper.ts
+|   |       
+|   +---security
+|   |       jwt.ts
+|   |       
+|   +---utils
+|   |       username.ts
+|   |       
+|   \---websocket
+|           socket.auth.ts
+|           socket.handlers.ts
+|           websocket.server.ts
+|           
+\---types
+        express.d.ts
+        

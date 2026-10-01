@@ -41,7 +41,24 @@ export const users = pgTable("users", {
   reset_password_token_expires: timestamp("reset_password_token_expires"),
   role: varchar("role", { length: 50 }).notNull(),
   email_verified: integer("email_verified").default(0).notNull(),
+  verification_status: varchar("verification_status", { length: 20 })
+    .default("none")
+    .notNull(),
+  // 'none' | 'pending' | 'verified' | 'rejected'
   created_at: timestamp("created_at").defaultNow(),
+});
+
+// ========================
+// USER BADGES (badges de confiance)
+// ========================
+export const userBadges = pgTable("user_badges", {
+  id: serial("id").primaryKey(),
+  user_id: integer("user_id").notNull(),
+  badge: varchar("badge", { length: 50 }).notNull(),
+  // 'verified' | 'agriculteur' | 'artisan' | 'createur' | 'bio' | 'producteur_local'
+  granted_by: integer("granted_by"), // admin_id
+  granted_at: timestamp("granted_at").defaultNow(),
+  revoked_at: timestamp("revoked_at"),
 });
 
 // ========================
@@ -258,6 +275,29 @@ export const notifications = pgTable("notifications", {
   data: text("data"),
   is_read: integer("is_read").default(0).notNull(),
   read_at: timestamp("read_at"),
+  created_at: timestamp("created_at").defaultNow(),
+});
+
+// ========================
+// KYC REQUESTS (vérification pro)
+// ========================
+export const kycRequests = pgTable("kyc_requests", {
+  id: serial("id").primaryKey(),
+  user_id: integer("user_id").notNull(),
+  status: varchar("status", { length: 20 }).default("pending").notNull(),
+  // 'pending' | 'approved' | 'rejected'
+  type: varchar("type", { length: 30 }).notNull(),
+  // 'agriculteur' | 'artisan' | 'createur' | 'autre'
+  siret: varchar("siret", { length: 14 }).notNull(),
+  siret_verified: integer("siret_verified").default(0).notNull(),
+  // 0 = pas encore vérifié via API, 1 = validé
+  siret_data: text("siret_data"),
+  // JSON stringifié du retour API (raison sociale, activité, etc.)
+  documents: text("documents"),
+  // JSON array d'URLs Cloudinary (pièce d'identité, etc.)
+  rejection_reason: text("rejection_reason"),
+  admin_id: integer("admin_id"),
+  reviewed_at: timestamp("reviewed_at"),
   created_at: timestamp("created_at").defaultNow(),
 });
 
