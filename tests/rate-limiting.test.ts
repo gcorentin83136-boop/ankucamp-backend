@@ -32,6 +32,29 @@ vi.mock("../src/core/api/orders/orders.emails", () => ({
 }));
 
 // ============================================================
+// MOCK CLOUDINARY (pour les tests d'upload)
+// ============================================================
+
+vi.mock("../src/config/cloudinary", () => ({
+  cloudinary: {
+    uploader: {
+      upload_stream: vi.fn((options: any, callback: any) => {
+        const stream = {
+          end: () => {
+            setImmediate(() => {
+              callback(null, {
+                secure_url: `https://res.cloudinary.com/fake/image/upload/${options.folder}/fake_${Date.now()}.jpg`,
+              });
+            });
+          },
+        };
+        return stream;
+      }),
+    },
+  },
+}));
+
+// ============================================================
 // CONFIG
 // ============================================================
 
@@ -163,7 +186,6 @@ async function hitN(
 // ============================================================
 
 beforeAll(async () => {
-  // Cleanup préalable
   const oldUsers = await db
     .select({ id: users.id })
     .from(users)
@@ -225,7 +247,6 @@ beforeAll(async () => {
   tokenSeller = await login("ratelimit_seller@test.com");
   tokenBuyer = await login("ratelimit_buyer@test.com");
 
-  // Crée shop + product + order
   const [shop] = await db
     .insert(shops)
     .values({
@@ -342,12 +363,10 @@ describe("Rate Limiting — Search (3/min)", () => {
   });
 
   it("un client différent n'est PAS impacté", async () => {
-    // Client A épuise son quota
     await hitN(3, "/search/users", { client: "search-c4A" });
     const rA = await hitN(1, "/search/users", { client: "search-c4A" });
     expect(rA[0].status).toBe(429);
 
-    // Client B a un quota neuf
     const rB = await hitN(1, "/search/users", { client: "search-c4B" });
     expect(rB[0].status).toBe(200);
   });
@@ -446,7 +465,6 @@ describe("Rate Limiting — Refunds (2/h)", () => {
 
   it("1ère demande OK (ou 400 si déjà en cours)", async () => {
     const r = await requestRefund("rf-c1");
-    // 201 = créée, 400 = déjà en cours (peu importe pour ce test)
     expect([201, 400]).toContain(r.status);
     expect(r.status).not.toBe(429);
   });
