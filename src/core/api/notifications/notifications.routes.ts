@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { authMiddleware } from "../../middlewares/auth.middleware";
 import { asyncHandler } from "../../errors/asyncHandler";
+import pushRoutes from "./push/push.routes";
 import {
   listMine,
   unreadCount,
@@ -11,7 +12,16 @@ import {
 
 const router = Router();
 
-// Toutes les routes nécessitent une auth
+// ============================================================
+// SOUS-ROUTES PUSH (avant authMiddleware global car push a le sien)
+// ============================================================
+
+router.use("/push", pushRoutes);
+
+// ============================================================
+// AUTH OBLIGATOIRE POUR LE RESTE
+// ============================================================
+
 router.use(authMiddleware);
 
 // ============================================================

@@ -25,6 +25,9 @@ const envSchema = z.object({
   // Marketplace
   PLATFORM_FEE_PERCENT: z.coerce.number().min(0).max(100).default(2.5),
 
+  // Firebase Cloud Messaging (push notifications)
+  FIREBASE_SERVICE_ACCOUNT_BASE64: z.string().min(100, "Service account Firebase manquant"),
+
   // Brevo (emails)
   BREVO_API_KEY: z.string().startsWith("xkeysib-"),
   EMAIL_FROM: z.string().email(),

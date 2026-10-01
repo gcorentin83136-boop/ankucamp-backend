@@ -1,4 +1,4 @@
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { env } from "./env";
 
 const isTest = env.NODE_ENV === "test";
@@ -52,7 +52,8 @@ function createConditionalLimiter(opts: {
         const authReq = req as any;
         if (authReq.user?.id) return `user:${authReq.user.id}`;
       }
-      return req.ip ?? "unknown";
+      // ✅ Utilise le helper officiel pour normaliser les IPv6
+      return ipKeyGenerator(req.ip ?? "unknown");
     },
 
     message: { success: false, message },

@@ -262,6 +262,20 @@ export const notifications = pgTable("notifications", {
 });
 
 // ========================
+// PUSH SUBSCRIPTIONS (tokens FCM des appareils)
+// ========================
+export const pushSubscriptions = pgTable("push_subscriptions", {
+  id: serial("id").primaryKey(),
+  user_id: integer("user_id").notNull(),
+  token: text("token").notNull().unique(),
+  platform: varchar("platform", { length: 20 }).notNull(),
+  // 'ios' | 'android' | 'web'
+  device_info: varchar("device_info", { length: 255 }),
+  created_at: timestamp("created_at").defaultNow(),
+  last_used_at: timestamp("last_used_at").defaultNow(),
+});
+
+// ========================
 // PAYMENTS
 // ========================
 export const payments = pgTable("payments", {
