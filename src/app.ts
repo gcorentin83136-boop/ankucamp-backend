@@ -35,6 +35,9 @@ import eventsRoutes from "./core/api/events/events.routes";
 import articlesRoutes from "./core/api/articles/articles.routes";
 import cartRoutes from "./core/api/cart/cart.routes";
 import wishlistRoutes from "./core/api/wishlist/wishlist.routes";
+import promoRoutes from "./core/api/promo/promo.routes";
+import promoAdminRoutes from "./core/api/promo/promo.admin.routes";
+import promoSellerRoutes from "./core/api/promo/promo.seller.routes";
 
 import { errorHandler } from "./core/errors/errorHandler";
 import { globalLimiter } from "./config/security";
@@ -150,6 +153,9 @@ app.use("/events", eventsRoutes);
 app.use("/articles", articlesRoutes);
 app.use("/cart", cartRoutes);
 app.use("/wishlist", wishlistRoutes);
+app.use("/promo/my", promoSellerRoutes);
+app.use("/promo", promoRoutes);
+app.use("/admin/promo", promoAdminRoutes);
 
 // ===============
 // 404

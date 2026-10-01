@@ -596,6 +596,7 @@ export const promoCodes = pgTable("promo_codes", {
   value: decimal("value", { precision: 10, scale: 2 }).notNull(),
   min_amount: decimal("min_amount", { precision: 10, scale: 2 }),
   max_uses: integer("max_uses"),
+  max_uses_per_user: integer("max_uses_per_user"),
   uses_count: integer("uses_count").default(0).notNull(),
   valid_from: timestamp("valid_from").defaultNow(),
   valid_until: timestamp("valid_until"),
