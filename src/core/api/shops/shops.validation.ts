@@ -9,6 +9,8 @@ export const createShopSchema = z.object({
   city: z.string().optional(),
   postal_code: z.string().optional(),
   phone: z.string().optional(),
+  latitude: z.number().min(-90).max(90).optional().nullable(),
+  longitude: z.number().min(-180).max(180).optional().nullable(),
 });
 
 export const updateShopSchema = createShopSchema.partial();

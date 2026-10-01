@@ -4,6 +4,7 @@ import { requireRole } from "../../middlewares/role.middleware";
 import { asyncHandler } from "../../errors/asyncHandler";
 import {
   listShops,
+  listShopsNearby,
   getOneShop,
   listMyShops,
   createOneShop,
@@ -13,8 +14,10 @@ import {
 
 const router = Router();
 
-router.get("/", asyncHandler(listShops));
+// ⚠️ /nearby AVANT /:id
+router.get("/nearby", asyncHandler(listShopsNearby));
 
+router.get("/", asyncHandler(listShops));
 router.get("/owner/me", authMiddleware, asyncHandler(listMyShops));
 
 router.post(

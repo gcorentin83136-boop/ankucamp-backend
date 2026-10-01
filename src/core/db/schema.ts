@@ -6,6 +6,7 @@ import {
   varchar,
   timestamp,
   decimal,
+  numeric,
 } from "drizzle-orm/pg-core";
 
 // ========================
@@ -27,6 +28,8 @@ export const users = pgTable("users", {
   bio: text("bio"),
   website: varchar("website", { length: 255 }),
   location: varchar("location", { length: 255 }),
+  latitude: numeric("latitude", { precision: 10, scale: 7 }),
+  longitude: numeric("longitude", { precision: 10, scale: 7 }),
   is_private: integer("is_private").default(0).notNull(),
   password_hash: varchar("password_hash", { length: 255 }),
   provider: varchar("provider", { length: 50 }).default("local").notNull(),
@@ -87,6 +90,8 @@ export const shops = pgTable("shops", {
   city: varchar("city", { length: 100 }),
   postal_code: varchar("postal_code", { length: 20 }),
   phone: varchar("phone", { length: 30 }),
+  latitude: numeric("latitude", { precision: 10, scale: 7 }),
+  longitude: numeric("longitude", { precision: 10, scale: 7 }),
   created_at: timestamp("created_at").defaultNow(),
 });
 
