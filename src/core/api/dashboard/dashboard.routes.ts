@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { authMiddleware } from "../../middlewares/auth.middleware";
+import { requireRole } from "../../middlewares/role.middleware";
 import { asyncHandler } from "../../errors/asyncHandler";
 import {
   stats as buyerStats,
@@ -18,6 +19,14 @@ import {
   recentReviews as sellerRecentReviews,
   recentOrders as sellerRecentOrders,
 } from "./seller/seller.controller";
+import {
+  stats as adminStats,
+  recentUsers as adminRecentUsers,
+  recentOrders as adminRecentOrders,
+  revenueChart as adminRevenueChart,
+  moderation as adminModeration,
+  pendingRefunds as adminPendingRefunds,
+} from "./admin/admin.controller";
 
 const router = Router();
 
@@ -52,5 +61,40 @@ router.get("/seller/top-products", asyncHandler(sellerTopProducts));
 router.get("/seller/ratings", asyncHandler(sellerRatings));
 router.get("/seller/recent-reviews", asyncHandler(sellerRecentReviews));
 router.get("/seller/recent-orders", asyncHandler(sellerRecentOrders));
+
+// ============================================================
+// ADMIN (réservé au rôle admin)
+// ============================================================
+
+router.get(
+  "/admin/stats",
+  requireRole("admin"),
+  asyncHandler(adminStats)
+);
+router.get(
+  "/admin/recent-users",
+  requireRole("admin"),
+  asyncHandler(adminRecentUsers)
+);
+router.get(
+  "/admin/recent-orders",
+  requireRole("admin"),
+  asyncHandler(adminRecentOrders)
+);
+router.get(
+  "/admin/revenue-chart",
+  requireRole("admin"),
+  asyncHandler(adminRevenueChart)
+);
+router.get(
+  "/admin/moderation",
+  requireRole("admin"),
+  asyncHandler(adminModeration)
+);
+router.get(
+  "/admin/pending-refunds",
+  requireRole("admin"),
+  asyncHandler(adminPendingRefunds)
+);
 
 export default router;
