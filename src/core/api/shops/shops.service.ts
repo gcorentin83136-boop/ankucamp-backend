@@ -1,38 +1,71 @@
-import { eq, ne, and } from "drizzle-orm";
+import { eq, notInArray } from "drizzle-orm";
 import { db } from "../../db";
-import { shops, shopSettings } from "../../db/schema";
+import { shops, shopSettings, users } from "../../db/schema";
 import { AppError } from "../../errors/AppError";
+import { getBadgesForUsers, getUserBadges } from "../badges/badges.service";
 import type { CreateShopInput, UpdateShopInput } from "./shops.validation";
 
 // ============================================================
-// LECTURE (exclut les boutiques masquées pour le public)
+// HELPERS
 // ============================================================
 
-/**
- * Liste toutes les boutiques NON MASQUÉES.
- */
-export async function getAllShops() {
-  const hiddenShopIds = await db
+async function getHiddenShopIds(): Promise<number[]> {
+  const rows = await db
     .select({ shop_id: shopSettings.shop_id })
     .from(shopSettings)
     .where(eq(shopSettings.is_hidden, 1));
+  return rows.map((r) => r.shop_id);
+}
 
-  const hiddenIds = hiddenShopIds.map((s) => s.shop_id);
+/**
+ * Enrichit un shop avec les infos de l'owner + ses badges.
+ * `badgesMap` optionnel (batch anti N+1).
+ */
+async function enrichShop(shop: any, badgesMap?: Map<number, string[]>) {
+  const [owner] = await db
+    .select({
+      id: users.id,
+      first_name: users.first_name,
+      last_name: users.last_name,
+      username: users.username,
+      avatar_url: users.avatar_url,
+      verification_status: users.verification_status,
+    })
+    .from(users)
+    .where(eq(users.id, shop.owner_id))
+    .limit(1);
 
-  if (hiddenIds.length === 0) {
-    return db.select().from(shops);
+  if (!owner) {
+    return { ...shop, owner: null };
   }
 
-  // Exclut les IDs masqués
-  return db
-    .select()
-    .from(shops)
-    .where(
-      hiddenIds.length === 1
-        ? ne(shops.id, hiddenIds[0])
-        : // @ts-ignore
-          ne(shops.id, hiddenIds[0]) && ne(shops.id, hiddenIds[0]) // fallback
-    );
+  const badges = badgesMap
+    ? badgesMap.get(owner.id) ?? []
+    : await getUserBadges(owner.id);
+
+  return { ...shop, owner: { ...owner, badges } };
+}
+
+// ============================================================
+// LECTURE
+// ============================================================
+
+/**
+ * Liste toutes les boutiques NON MASQUÉES (+ owner + badges).
+ */
+export async function getAllShops() {
+  const hiddenIds = await getHiddenShopIds();
+
+  const rows =
+    hiddenIds.length === 0
+      ? await db.select().from(shops)
+      : await db
+          .select()
+          .from(shops)
+          .where(notInArray(shops.id, hiddenIds));
+
+  const badgesMap = await getBadgesForUsers(rows.map((r) => r.owner_id));
+  return Promise.all(rows.map((r) => enrichShop(r, badgesMap)));
 }
 
 export async function getShopById(id: number) {
@@ -42,15 +75,20 @@ export async function getShopById(id: number) {
     .where(eq(shops.id, id))
     .limit(1);
 
-  return shop ?? null;
+  if (!shop) return null;
+  return enrichShop(shop);
 }
 
 /**
- * Liste des boutiques d'un owner (inclut les masquées, car c'est le owner qui voit).
+ * Liste des boutiques d'un owner (sans enrichissement : c'est lui-même).
  */
 export async function getShopsByOwner(ownerId: number) {
   return db.select().from(shops).where(eq(shops.owner_id, ownerId));
 }
+
+// ============================================================
+// ÉCRITURE
+// ============================================================
 
 export async function createShop(ownerId: number, input: CreateShopInput) {
   const [created] = await db
@@ -76,12 +114,13 @@ export async function updateShop(
   userId: number,
   input: UpdateShopInput
 ) {
-  const shop = await getShopById(shopId);
+  const [shop] = await db
+    .select()
+    .from(shops)
+    .where(eq(shops.id, shopId))
+    .limit(1);
 
-  if (!shop) {
-    throw new AppError("Boutique introuvable", 404);
-  }
-
+  if (!shop) throw new AppError("Boutique introuvable", 404);
   if (shop.owner_id !== userId) {
     throw new AppError("Vous n'êtes pas le propriétaire de cette boutique", 403);
   }
@@ -96,12 +135,13 @@ export async function updateShop(
 }
 
 export async function deleteShop(shopId: number, userId: number) {
-  const shop = await getShopById(shopId);
+  const [shop] = await db
+    .select()
+    .from(shops)
+    .where(eq(shops.id, shopId))
+    .limit(1);
 
-  if (!shop) {
-    throw new AppError("Boutique introuvable", 404);
-  }
-
+  if (!shop) throw new AppError("Boutique introuvable", 404);
   if (shop.owner_id !== userId) {
     throw new AppError("Vous n'êtes pas le propriétaire de cette boutique", 403);
   }

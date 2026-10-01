@@ -9,6 +9,7 @@ import {
   getRevenueChart,
   getModerationList,
   getPendingRefunds,
+  getKycSummaryForDashboard,
 } from "./admin.service";
 
 // ============================================================
@@ -109,5 +110,20 @@ export async function pendingRefunds(req: AuthRequest, res: Response) {
     success: true,
     count: list.length,
     refunds: list,
+  });
+}
+
+// ============================================================
+// GET /dashboard/admin/kyc-summary
+// ============================================================
+
+export async function kycSummary(req: AuthRequest, res: Response) {
+  if (!req.user) throw new AppError("Non authentifié", 401);
+
+  const result = await getKycSummaryForDashboard();
+
+  return res.json({
+    success: true,
+    ...result,
   });
 }

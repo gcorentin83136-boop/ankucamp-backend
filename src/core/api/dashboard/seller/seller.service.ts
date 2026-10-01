@@ -7,8 +7,11 @@ import {
   payments,
   reviews,
   refundRequests,
+  users,
 } from "../../../db/schema";
 import { AppError } from "../../../errors/AppError";
+import { getMyLastKycRequest } from "../../kyc/kyc.service";
+import { getUserBadges } from "../../badges/badges.service";
 
 // ============================================================
 // STATS GLOBALES SELLER
@@ -38,10 +41,7 @@ export async function getSellerStats(sellerId: number) {
       and(
         eq(payments.seller_id, sellerId),
         eq(payments.status, "succeeded"),
-        gte(
-          payments.created_at,
-          sql`date_trunc('month', now())`
-        )
+        gte(payments.created_at, sql`date_trunc('month', now())`)
       )
     );
 
@@ -55,10 +55,7 @@ export async function getSellerStats(sellerId: number) {
       and(
         eq(payments.seller_id, sellerId),
         eq(payments.status, "succeeded"),
-        gte(
-          payments.created_at,
-          sql`now() - interval '12 months'`
-        )
+        gte(payments.created_at, sql`now() - interval '12 months'`)
       )
     );
 
@@ -129,7 +126,6 @@ export async function getSellerOrdersBreakdown(sellerId: number) {
 
   return {
     ...breakdown,
-    // ✅ Alias métier (sans écraser les vrais statuts)
     to_treat: breakdown.pending,
     to_ship: breakdown.confirmed,
     in_progress: breakdown.shipped,
@@ -200,7 +196,6 @@ export async function getTopProducts(sellerId: number, limit = 5) {
 // ============================================================
 
 export async function getSellerRatings(sellerId: number) {
-  // Note globale
   const [globalRating] = await db
     .select({
       avg: sql<number>`coalesce(avg(${reviews.rating}), 0)::numeric(3,1)`,
@@ -214,7 +209,6 @@ export async function getSellerRatings(sellerId: number) {
       )
     );
 
-  // Note par produit
   const byProduct = await db
     .select({
       product_id: reviews.product_id,
@@ -275,4 +269,35 @@ export async function getRecentOrdersToTreat(sellerId: number, limit = 10) {
     .limit(limit);
 
   return rows;
+}
+
+// ============================================================
+// VERIFICATION PRO + BADGES (widget dashboard seller)
+// ============================================================
+
+export async function getSellerVerification(sellerId: number) {
+  const [userRow] = await db
+    .select({ verification_status: users.verification_status })
+    .from(users)
+    .where(eq(users.id, sellerId))
+    .limit(1);
+
+  const lastRequest = await getMyLastKycRequest(sellerId);
+  const badges = await getUserBadges(sellerId);
+
+  return {
+    verification_status: userRow?.verification_status ?? "none",
+    last_request: lastRequest
+      ? {
+          id: lastRequest.id,
+          status: lastRequest.status,
+          type: lastRequest.type,
+          siret: lastRequest.siret,
+          created_at: lastRequest.created_at,
+          reviewed_at: lastRequest.reviewed_at,
+          rejection_reason: lastRequest.rejection_reason,
+        }
+      : null,
+    badges,
+  };
 }

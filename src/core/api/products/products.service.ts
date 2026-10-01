@@ -1,7 +1,8 @@
-import { eq, notInArray } from "drizzle-orm";
+import { eq, notInArray, inArray } from "drizzle-orm";
 import { db } from "../../db";
-import { products, shops, shopSettings } from "../../db/schema";
+import { products, shops, shopSettings, users } from "../../db/schema";
 import { AppError } from "../../errors/AppError";
+import { getBadgesForUsers, getUserBadges } from "../badges/badges.service";
 import type {
   CreateProductInput,
   UpdateProductInput,
@@ -18,10 +19,7 @@ async function assertShopOwner(shopId: number, userId: number) {
     .where(eq(shops.id, shopId))
     .limit(1);
 
-  if (!shop) {
-    throw new AppError("Boutique introuvable", 404);
-  }
-
+  if (!shop) throw new AppError("Boutique introuvable", 404);
   if (shop.owner_id !== userId) {
     throw new AppError("Vous n'êtes pas le propriétaire de cette boutique", 403);
   }
@@ -36,18 +34,12 @@ async function assertProductOwnership(productId: number, userId: number) {
     .where(eq(products.id, productId))
     .limit(1);
 
-  if (!product) {
-    throw new AppError("Produit introuvable", 404);
-  }
+  if (!product) throw new AppError("Produit introuvable", 404);
 
   await assertShopOwner(product.shop_id, userId);
-
   return product;
 }
 
-/**
- * Renvoie la liste des shop_ids masqués.
- */
 async function getHiddenShopIds(): Promise<number[]> {
   const rows = await db
     .select({ shop_id: shopSettings.shop_id })
@@ -57,28 +49,99 @@ async function getHiddenShopIds(): Promise<number[]> {
   return rows.map((r) => r.shop_id);
 }
 
+/**
+ * Enrichit un produit avec shop + owner + badges de l'owner.
+ * `shopMap` et `ownerBadgesMap` optionnels (batch anti N+1).
+ */
+async function enrichProduct(
+  product: any,
+  shopMap?: Map<number, any>,
+  badgesMap?: Map<number, string[]>
+) {
+  let shop: any = null;
+
+  if (shopMap) {
+    shop = shopMap.get(product.shop_id) ?? null;
+  } else {
+    const [found] = await db
+      .select()
+      .from(shops)
+      .where(eq(shops.id, product.shop_id))
+      .limit(1);
+    shop = found ?? null;
+  }
+
+  if (!shop) {
+    return { ...product, shop: null };
+  }
+
+  const [owner] = await db
+    .select({
+      id: users.id,
+      first_name: users.first_name,
+      last_name: users.last_name,
+      username: users.username,
+      avatar_url: users.avatar_url,
+      verification_status: users.verification_status,
+    })
+    .from(users)
+    .where(eq(users.id, shop.owner_id))
+    .limit(1);
+
+  if (!owner) {
+    return { ...product, shop: { ...shop, owner: null } };
+  }
+
+  const badges = badgesMap
+    ? badgesMap.get(owner.id) ?? []
+    : await getUserBadges(owner.id);
+
+  return {
+    ...product,
+    shop: { ...shop, owner: { ...owner, badges } },
+  };
+}
+
 // ============================================================
-// CRUD
+// LECTURE
 // ============================================================
 
 /**
- * Liste tous les produits dont la boutique n'est PAS masquée.
+ * Liste tous les produits dont la boutique n'est PAS masquée (+ shop + owner + badges).
  */
 export async function getAllProducts() {
   const hiddenIds = await getHiddenShopIds();
 
-  if (hiddenIds.length === 0) {
-    return db.select().from(products);
-  }
+  const rows =
+    hiddenIds.length === 0
+      ? await db.select().from(products)
+      : await db
+          .select()
+          .from(products)
+          .where(notInArray(products.shop_id, hiddenIds));
 
-  return db
-    .select()
-    .from(products)
-    .where(notInArray(products.shop_id, hiddenIds));
+  const shopIds = Array.from(new Set(rows.map((r) => r.shop_id)));
+  const shopRows =
+    shopIds.length > 0
+      ? await db.select().from(shops).where(inArray(shops.id, shopIds))
+      : [];
+
+  const shopMap = new Map<number, any>();
+  for (const s of shopRows) shopMap.set(s.id, s);
+
+  const ownerIds = shopRows.map((s) => s.owner_id);
+  const badgesMap = await getBadgesForUsers(ownerIds);
+
+  return Promise.all(rows.map((r) => enrichProduct(r, shopMap, badgesMap)));
 }
 
 export async function getProductsByShop(shopId: number) {
-  return db.select().from(products).where(eq(products.shop_id, shopId));
+  const rows = await db
+    .select()
+    .from(products)
+    .where(eq(products.shop_id, shopId));
+
+  return Promise.all(rows.map((r) => enrichProduct(r)));
 }
 
 export async function getProductById(id: number) {
@@ -88,8 +151,13 @@ export async function getProductById(id: number) {
     .where(eq(products.id, id))
     .limit(1);
 
-  return product ?? null;
+  if (!product) return null;
+  return enrichProduct(product);
 }
+
+// ============================================================
+// CRUD
+// ============================================================
 
 export async function createProduct(
   userId: number,

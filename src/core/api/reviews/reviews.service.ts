@@ -10,6 +10,7 @@ import {
 } from "../../db/schema";
 import { AppError } from "../../errors/AppError";
 import { notifyNewReview } from "../../notifications/notifications.helper";
+import { getBadgesForUsers, getUserBadges } from "../badges/badges.service";
 import type {
   CreateReviewInput,
   ListReviewsQuery,
@@ -19,22 +20,12 @@ import type {
 // CRÉATION D'UN AVIS
 // ============================================================
 
-/**
- * Crée un avis sur un produit acheté.
- *
- * Règles :
- * - Seul l'acheteur de la commande peut noter
- * - La commande doit être au statut "delivered"
- * - Le produit doit faire partie de la commande
- * - 1 seul avis par (order_id + product_id)
- */
 export async function createReview(
   authorId: number,
   input: CreateReviewInput
 ) {
   const { order_id, product_id, rating, comment } = input;
 
-  // 1. Charge la commande
   const [order] = await db
     .select()
     .from(orders)
@@ -45,12 +36,10 @@ export async function createReview(
     throw new AppError("Commande introuvable", 404);
   }
 
-  // 2. Vérifie que l'auteur est l'acheteur
   if (order.buyer_id !== authorId) {
     throw new AppError("Seul l'acheteur peut laisser un avis", 403);
   }
 
-  // 3. Vérifie que la commande est livrée
   if (order.status !== "delivered") {
     throw new AppError(
       "Tu peux laisser un avis uniquement après réception de la commande",
@@ -58,7 +47,6 @@ export async function createReview(
     );
   }
 
-  // 4. Vérifie que le produit fait partie de la commande
   const [orderItem] = await db
     .select()
     .from(orderItems)
@@ -74,7 +62,6 @@ export async function createReview(
     throw new AppError("Ce produit ne fait pas partie de cette commande", 400);
   }
 
-  // 5. Vérifie qu'un avis n'existe pas déjà
   const [existingReview] = await db
     .select()
     .from(reviews)
@@ -87,7 +74,6 @@ export async function createReview(
     throw new AppError("Tu as déjà laissé un avis sur ce produit", 400);
   }
 
-  // 6. Crée l'avis
   const [review] = await db
     .insert(reviews)
     .values({
@@ -100,9 +86,6 @@ export async function createReview(
     })
     .returning();
 
-  // ============================================================
-  // 🔔 Notif vendeur (fire & forget)
-  // ============================================================
   try {
     const [author] = await db
       .select()
@@ -136,10 +119,6 @@ export async function createReview(
 // LECTURE — AVIS PAR PRODUIT
 // ============================================================
 
-/**
- * Liste les avis d'un produit avec les infos de l'auteur.
- * Exclut les avis signalés (is_flagged = 1).
- */
 export async function getReviewsByProduct(
   productId: number,
   query: ListReviewsQuery
@@ -162,7 +141,9 @@ export async function getReviewsByProduct(
       author_id: reviews.author_id,
       author_first_name: users.first_name,
       author_last_name: users.last_name,
+      author_username: users.username,
       author_avatar_url: users.avatar_url,
+      author_verification_status: users.verification_status,
     })
     .from(reviews)
     .leftJoin(users, eq(users.id, reviews.author_id))
@@ -171,16 +152,19 @@ export async function getReviewsByProduct(
     .limit(limit)
     .offset(offset);
 
-  return rows;
+  // Batch badges (anti N+1)
+  const badgesMap = await getBadgesForUsers(rows.map((r) => r.author_id));
+
+  return rows.map((r) => ({
+    ...r,
+    author_badges: badgesMap.get(r.author_id) ?? [],
+  }));
 }
 
 // ============================================================
 // LECTURE — AVIS PAR VENDEUR
 // ============================================================
 
-/**
- * Liste les avis reçus par un vendeur (toutes ses ventes).
- */
 export async function getReviewsBySeller(
   sellerId: number,
   query: ListReviewsQuery
@@ -206,6 +190,9 @@ export async function getReviewsBySeller(
       author_id: reviews.author_id,
       author_first_name: users.first_name,
       author_last_name: users.last_name,
+      author_username: users.username,
+      author_avatar_url: users.avatar_url,
+      author_verification_status: users.verification_status,
     })
     .from(reviews)
     .leftJoin(products, eq(products.id, reviews.product_id))
@@ -215,16 +202,18 @@ export async function getReviewsBySeller(
     .limit(limit)
     .offset(offset);
 
-  return rows;
+  const badgesMap = await getBadgesForUsers(rows.map((r) => r.author_id));
+
+  return rows.map((r) => ({
+    ...r,
+    author_badges: badgesMap.get(r.author_id) ?? [],
+  }));
 }
 
 // ============================================================
 // LECTURE — MES AVIS (auteur)
 // ============================================================
 
-/**
- * Liste les avis rédigés par un utilisateur.
- */
 export async function getMyReviews(authorId: number) {
   const rows = await db
     .select({
@@ -248,10 +237,6 @@ export async function getMyReviews(authorId: number) {
 // STATS — MOYENNE ET DISTRIBUTION
 // ============================================================
 
-/**
- * Retourne la note moyenne, le nombre d'avis et la distribution (1-5 étoiles)
- * pour un produit donné.
- */
 export async function getProductRatingStats(productId: number) {
   const rows = await db
     .select({
@@ -289,9 +274,6 @@ export async function getProductRatingStats(productId: number) {
 // STATS — POUR PLUSIEURS PRODUITS (bulk)
 // ============================================================
 
-/**
- * Calcule les stats de plusieurs produits en 1 seule requête.
- */
 export async function getBulkProductRatingStats(productIds: number[]) {
   if (productIds.length === 0) {
     return {} as Record<number, { average: number; total: number }>;
@@ -341,9 +323,6 @@ export async function getBulkProductRatingStats(productIds: number[]) {
 // SUPPRESSION D'UN AVIS
 // ============================================================
 
-/**
- * Supprime un avis. Seul l'auteur peut supprimer son propre avis.
- */
 export async function deleteReview(reviewId: number, userId: number) {
   const [review] = await db
     .select()
@@ -367,9 +346,6 @@ export async function deleteReview(reviewId: number, userId: number) {
 // SIGNALEMENT D'UN AVIS
 // ============================================================
 
-/**
- * Signale un avis (par le vendeur concerné uniquement).
- */
 export async function reportReview(
   reviewId: number,
   reporterId: number,
@@ -422,9 +398,6 @@ export async function reportReview(
 // LECTURE — UN AVIS PAR ID
 // ============================================================
 
-/**
- * Récupère un avis par son ID.
- */
 export async function getReviewById(reviewId: number) {
   const [review] = await db
     .select()

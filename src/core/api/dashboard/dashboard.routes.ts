@@ -18,6 +18,7 @@ import {
   ratings as sellerRatings,
   recentReviews as sellerRecentReviews,
   recentOrders as sellerRecentOrders,
+  verification as sellerVerification,
 } from "./seller/seller.controller";
 import {
   stats as adminStats,
@@ -26,11 +27,11 @@ import {
   revenueChart as adminRevenueChart,
   moderation as adminModeration,
   pendingRefunds as adminPendingRefunds,
+  kycSummary as adminKycSummary,
 } from "./admin/admin.controller";
 
 const router = Router();
 
-// Toutes les routes nécessitent une authentification
 router.use(authMiddleware);
 
 // ============================================================
@@ -61,9 +62,10 @@ router.get("/seller/top-products", asyncHandler(sellerTopProducts));
 router.get("/seller/ratings", asyncHandler(sellerRatings));
 router.get("/seller/recent-reviews", asyncHandler(sellerRecentReviews));
 router.get("/seller/recent-orders", asyncHandler(sellerRecentOrders));
+router.get("/seller/verification", asyncHandler(sellerVerification));
 
 // ============================================================
-// ADMIN (réservé au rôle admin)
+// ADMIN
 // ============================================================
 
 router.get(
@@ -95,6 +97,11 @@ router.get(
   "/admin/pending-refunds",
   requireRole("admin"),
   asyncHandler(adminPendingRefunds)
+);
+router.get(
+  "/admin/kyc-summary",
+  requireRole("admin"),
+  asyncHandler(adminKycSummary)
 );
 
 export default router;

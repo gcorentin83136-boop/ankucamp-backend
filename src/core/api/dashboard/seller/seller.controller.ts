@@ -10,6 +10,7 @@ import {
   getSellerRatings,
   getRecentReviews,
   getRecentOrdersToTreat,
+  getSellerVerification,
 } from "./seller.service";
 
 // ============================================================
@@ -122,4 +123,16 @@ export async function recentOrders(req: AuthRequest, res: Response) {
     count: list.length,
     orders: list,
   });
+}
+
+// ============================================================
+// GET /dashboard/seller/verification
+// ============================================================
+
+export async function verification(req: AuthRequest, res: Response) {
+  if (!req.user) throw new AppError("Non authentifié", 401);
+
+  const result = await getSellerVerification(req.user.id);
+
+  return res.json({ success: true, ...result });
 }

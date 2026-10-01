@@ -14,6 +14,7 @@ import {
   notifyPostCommented,
   notifyCommentReplied,
 } from "../../notifications/social-notifications.helper";
+import { getBadgesForUsers, getUserBadges } from "../badges/badges.service";
 import type {
   CreatePostInput,
   UpdatePostInput,
@@ -26,9 +27,6 @@ import type {
 // HELPERS PRIVÉS
 // ============================================================
 
-/**
- * Récupère les IDs des amis acceptés d'un utilisateur.
- */
 async function getFriendIds(userId: number): Promise<number[]> {
   const rows = await db
     .select({
@@ -51,9 +49,6 @@ async function getFriendIds(userId: number): Promise<number[]> {
   );
 }
 
-/**
- * Vérifie si userA et userB sont amis acceptés.
- */
 async function areFriends(userA: number, userB: number): Promise<boolean> {
   const [row] = await db
     .select({ id: friendships.id })
@@ -79,9 +74,14 @@ async function areFriends(userA: number, userB: number): Promise<boolean> {
 }
 
 /**
- * Enrichit un post avec les infos auteur + liked_by_me.
+ * Enrichit un post avec les infos auteur + liked_by_me + badges.
+ * `badgesMap` est optionnel (batch anti N+1 pour les listes).
  */
-async function enrichPost(post: any, viewerId?: number): Promise<any> {
+async function enrichPost(
+  post: any,
+  viewerId?: number,
+  badgesMap?: Map<number, string[]>
+): Promise<any> {
   const [author] = await db
     .select({
       id: users.id,
@@ -89,10 +89,15 @@ async function enrichPost(post: any, viewerId?: number): Promise<any> {
       last_name: users.last_name,
       username: users.username,
       avatar_url: users.avatar_url,
+      verification_status: users.verification_status,
     })
     .from(users)
     .where(eq(users.id, post.author_id))
     .limit(1);
+
+  const authorBadges = badgesMap
+    ? badgesMap.get(post.author_id) ?? []
+    : await getUserBadges(post.author_id);
 
   let likedByMe = false;
   if (viewerId) {
@@ -106,7 +111,6 @@ async function enrichPost(post: any, viewerId?: number): Promise<any> {
     likedByMe = !!like;
   }
 
-  // Post partagé ?
   let sharedFrom: any = null;
   if (post.shared_from_post_id) {
     const [original] = await db
@@ -123,15 +127,22 @@ async function enrichPost(post: any, viewerId?: number): Promise<any> {
           last_name: users.last_name,
           username: users.username,
           avatar_url: users.avatar_url,
+          verification_status: users.verification_status,
         })
         .from(users)
         .where(eq(users.id, original.author_id))
         .limit(1);
 
+      const originalBadges =
+        badgesMap?.get(original.author_id) ??
+        (await getUserBadges(original.author_id));
+
       sharedFrom = {
         ...original,
         media_urls: original.media_urls ? JSON.parse(original.media_urls) : [],
-        author: originalAuthor,
+        author: originalAuthor
+          ? { ...originalAuthor, badges: originalBadges }
+          : null,
       };
     }
   }
@@ -139,7 +150,7 @@ async function enrichPost(post: any, viewerId?: number): Promise<any> {
   return {
     ...post,
     media_urls: post.media_urls ? JSON.parse(post.media_urls) : [],
-    author,
+    author: author ? { ...author, badges: authorBadges } : null,
     liked_by_me: likedByMe,
     shared_from: sharedFrom,
   };
@@ -152,7 +163,6 @@ async function enrichPost(post: any, viewerId?: number): Promise<any> {
 export async function createPost(authorId: number, input: CreatePostInput) {
   const { content, media_urls, visibility } = input;
 
-  // Il faut au moins texte OU média
   if (
     (!content || content.trim() === "") &&
     (!media_urls || media_urls.length === 0)
@@ -189,7 +199,6 @@ export async function getPostById(postId: number, viewerId?: number) {
 
   if (!post) throw new AppError("Post introuvable", 404);
 
-  // Vérif visibilité
   if (post.visibility === "private" && post.author_id !== viewerId) {
     throw new AppError("Tu n'as pas accès à ce post", 403);
   }
@@ -209,7 +218,6 @@ export async function getFeed(viewerId: number, query: ListPostsQuery) {
 
   const friendIds = await getFriendIds(viewerId);
 
-  // Feed = posts publics + posts des amis + mes propres posts
   const conditions: any[] = [eq(posts.visibility, "public")];
 
   if (friendIds.length > 0) {
@@ -228,7 +236,8 @@ export async function getFeed(viewerId: number, query: ListPostsQuery) {
     .limit(limit)
     .offset(offset);
 
-  return Promise.all(rows.map((p) => enrichPost(p, viewerId)));
+  const badgesMap = await getBadgesForUsers(rows.map((r) => r.author_id));
+  return Promise.all(rows.map((p) => enrichPost(p, viewerId, badgesMap)));
 }
 
 export async function getUserPosts(
@@ -238,7 +247,6 @@ export async function getUserPosts(
 ) {
   const { limit, offset } = query;
 
-  // Si c'est moi → tous mes posts
   if (targetUserId === viewerId) {
     const rows = await db
       .select()
@@ -248,10 +256,10 @@ export async function getUserPosts(
       .limit(limit)
       .offset(offset);
 
-    return Promise.all(rows.map((p) => enrichPost(p, viewerId)));
+    const badgesMap = await getBadgesForUsers(rows.map((r) => r.author_id));
+    return Promise.all(rows.map((p) => enrichPost(p, viewerId, badgesMap)));
   }
 
-  // Sinon → check visibilité du profil
   const [target] = await db
     .select({ id: users.id, is_private: users.is_private })
     .from(users)
@@ -262,12 +270,10 @@ export async function getUserPosts(
 
   const friends = await areFriends(viewerId, targetUserId);
 
-  // Profil privé → seulement les amis
   if (target.is_private === 1 && !friends) {
     throw new AppError("Ce profil est privé", 403);
   }
 
-  // Posts visibles : public + (friends si amis)
   const conditions: any[] = [
     and(eq(posts.author_id, targetUserId), eq(posts.visibility, "public")),
   ];
@@ -286,7 +292,8 @@ export async function getUserPosts(
     .limit(limit)
     .offset(offset);
 
-  return Promise.all(rows.map((p) => enrichPost(p, viewerId)));
+  const badgesMap = await getBadgesForUsers(rows.map((r) => r.author_id));
+  return Promise.all(rows.map((p) => enrichPost(p, viewerId, badgesMap)));
 }
 
 export async function getMyPosts(authorId: number, query: ListPostsQuery) {
@@ -300,7 +307,8 @@ export async function getMyPosts(authorId: number, query: ListPostsQuery) {
     .limit(limit)
     .offset(offset);
 
-  return Promise.all(rows.map((p) => enrichPost(p, authorId)));
+  const badgesMap = await getBadgesForUsers(rows.map((r) => r.author_id));
+  return Promise.all(rows.map((p) => enrichPost(p, authorId, badgesMap)));
 }
 
 // ============================================================
@@ -348,7 +356,6 @@ export async function deletePost(postId: number, userId: number) {
     throw new AppError("Tu ne peux supprimer que tes propres posts", 403);
   }
 
-  // Suppression en cascade manuelle
   await db.delete(postLikes).where(eq(postLikes.post_id, postId));
   await db.delete(postComments).where(eq(postComments.post_id, postId));
   await db.delete(postShares).where(eq(postShares.post_id, postId));
@@ -375,7 +382,6 @@ export async function toggleLike(postId: number, userId: number) {
     .limit(1);
 
   if (existing) {
-    // Unlike
     await db.delete(postLikes).where(eq(postLikes.id, existing.id));
     await db
       .update(posts)
@@ -384,14 +390,12 @@ export async function toggleLike(postId: number, userId: number) {
 
     return { liked: false };
   } else {
-    // Like
     await db.insert(postLikes).values({ post_id: postId, user_id: userId });
     await db
       .update(posts)
       .set({ likes_count: sql`${posts.likes_count} + 1` })
       .where(eq(posts.id, postId));
 
-    // Notif (si ce n'est pas mon propre post)
     if (post.author_id !== userId) {
       const [liker] = await db
         .select({ first_name: users.first_name, last_name: users.last_name })
@@ -423,6 +427,7 @@ export async function getLikes(postId: number, query: ListPostsQuery) {
       last_name: users.last_name,
       username: users.username,
       avatar_url: users.avatar_url,
+      verification_status: users.verification_status,
       created_at: postLikes.created_at,
     })
     .from(postLikes)
@@ -432,7 +437,11 @@ export async function getLikes(postId: number, query: ListPostsQuery) {
     .limit(limit)
     .offset(offset);
 
-  return rows;
+  const badgesMap = await getBadgesForUsers(rows.map((r) => r.user_id));
+  return rows.map((r) => ({
+    ...r,
+    badges: badgesMap.get(r.user_id) ?? [],
+  }));
 }
 
 // ============================================================
@@ -452,7 +461,6 @@ export async function addComment(
 
   if (!post) throw new AppError("Post introuvable", 404);
 
-  // Si c'est une réponse, on vérifie que le parent existe
   if (input.parent_comment_id) {
     const [parent] = await db
       .select()
@@ -464,7 +472,6 @@ export async function addComment(
       throw new AppError("Commentaire parent introuvable", 404);
     }
 
-    // Vérif : on limite à 2 niveaux
     if (parent.parent_comment_id !== null) {
       throw new AppError("Tu ne peux pas répondre à une réponse", 400);
     }
@@ -480,13 +487,11 @@ export async function addComment(
     })
     .returning();
 
-  // Incrément compteur
   await db
     .update(posts)
     .set({ comments_count: sql`${posts.comments_count} + 1` })
     .where(eq(posts.id, postId));
 
-  // Notifs
   try {
     const [commenter] = await db
       .select({ first_name: users.first_name, last_name: users.last_name })
@@ -498,14 +503,12 @@ export async function addComment(
       ? `${commenter.first_name} ${commenter.last_name}`
       : "Quelqu'un";
 
-    // Notif auteur du post (si différent du commentateur)
     if (post.author_id !== authorId) {
       notifyPostCommented(post.author_id, postId, commenterName).catch((err) =>
         console.error("❌ Erreur notif comment:", err)
       );
     }
 
-    // Notif auteur du parent commentaire (si réponse)
     if (input.parent_comment_id) {
       const [parent] = await db
         .select({ author_id: postComments.author_id })
@@ -533,7 +536,6 @@ export async function addComment(
 export async function getComments(postId: number, query: ListPostsQuery) {
   const { limit, offset } = query;
 
-  // Récupère tous les commentaires (racines + réponses)
   const all = await db
     .select({
       id: postComments.id,
@@ -546,19 +548,27 @@ export async function getComments(postId: number, query: ListPostsQuery) {
       author_last_name: users.last_name,
       author_username: users.username,
       author_avatar_url: users.avatar_url,
+      author_verification_status: users.verification_status,
     })
     .from(postComments)
     .leftJoin(users, eq(users.id, postComments.author_id))
     .where(eq(postComments.post_id, postId))
     .orderBy(postComments.created_at);
 
-  // Structure : racines + réponses imbriquées
+  const badgesMap = await getBadgesForUsers(all.map((c) => c.author_id));
+
   const roots = all.filter((c) => c.parent_comment_id === null);
   const replies = all.filter((c) => c.parent_comment_id !== null);
 
   const structured = roots.slice(offset, offset + limit).map((root) => ({
     ...root,
-    replies: replies.filter((r) => r.parent_comment_id === root.id),
+    author_badges: badgesMap.get(root.author_id) ?? [],
+    replies: replies
+      .filter((r) => r.parent_comment_id === root.id)
+      .map((r) => ({
+        ...r,
+        author_badges: badgesMap.get(r.author_id) ?? [],
+      })),
   }));
 
   return structured;
@@ -573,7 +583,6 @@ export async function deleteComment(commentId: number, userId: number) {
 
   if (!comment) throw new AppError("Commentaire introuvable", 404);
 
-  // Suppression autorisée : auteur du comment OU auteur du post
   const [post] = await db
     .select()
     .from(posts)
@@ -586,13 +595,11 @@ export async function deleteComment(commentId: number, userId: number) {
     throw new AppError("Tu n'as pas le droit de supprimer ce commentaire", 403);
   }
 
-  // Supprime aussi les réponses enfants
   await db
     .delete(postComments)
     .where(eq(postComments.parent_comment_id, commentId));
   await db.delete(postComments).where(eq(postComments.id, commentId));
 
-  // Décrémente compteur (compte aussi les réponses)
   const [countResult] = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(postComments)
@@ -621,7 +628,6 @@ export async function sharePost(
 
   if (!original) throw new AppError("Post introuvable", 404);
 
-  // Crée un nouveau post qui référence l'original
   const [created] = await db
     .insert(posts)
     .values({
@@ -633,13 +639,11 @@ export async function sharePost(
     })
     .returning();
 
-  // Incrémente compteur partages sur l'original
   await db
     .update(posts)
     .set({ shares_count: sql`${posts.shares_count} + 1` })
     .where(eq(posts.id, postId));
 
-  // Track le partage
   await db.insert(postShares).values({
     post_id: postId,
     user_id: authorId,

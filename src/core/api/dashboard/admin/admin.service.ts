@@ -8,8 +8,10 @@ import {
   payments,
   reviews,
   refundRequests,
+  kycRequests,
 } from "../../../db/schema";
 import { AppError } from "../../../errors/AppError";
+import { getKycStats } from "../../kyc/kyc.service";
 
 // ============================================================
 // STATS GLOBALES PLATEFORME
@@ -84,9 +86,7 @@ export async function getAdminStats() {
       refunded: ordersRow?.refunded ?? 0,
     },
     revenue: {
-      // CA total TTC (tous les payments succeeded)
       total_gmv: revenueRow?.total ?? "0",
-      // Commission plateforme = somme des application_fee_amount
       platform_fees: revenueRow?.total ?? "0",
     },
     pending_refunds: refundsRow?.count ?? 0,
@@ -195,4 +195,32 @@ export async function getPendingRefunds(limit = 50) {
     .limit(limit);
 
   return rows;
+}
+
+// ============================================================
+// KYC - RESUME DASHBOARD
+// ============================================================
+
+export async function getKycSummaryForDashboard() {
+  const stats = await getKycStats();
+
+  const pending = await db
+    .select({
+      id: kycRequests.id,
+      user_id: kycRequests.user_id,
+      type: kycRequests.type,
+      siret: kycRequests.siret,
+      created_at: kycRequests.created_at,
+      username: users.username,
+      first_name: users.first_name,
+      last_name: users.last_name,
+      avatar_url: users.avatar_url,
+    })
+    .from(kycRequests)
+    .innerJoin(users, eq(users.id, kycRequests.user_id))
+    .where(eq(kycRequests.status, "pending"))
+    .orderBy(desc(kycRequests.created_at))
+    .limit(5);
+
+  return { stats, pending };
 }
