@@ -24,6 +24,7 @@ export const AUDIT_ACTIONS = [
   "user_ban",
   "user_delete",
   "event_cancel",
+  "backup_run",
   "other",
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
@@ -61,10 +62,6 @@ export interface LogAdminActionInput {
 // CORE
 // ============================================================
 
-/**
- * Enregistre une action admin dans la table audit_logs.
- * Fire & forget : ne bloque JAMAIS l'action principale en cas d'erreur.
- */
 export async function logAdminAction(
   input: LogAdminActionInput
 ): Promise<void> {
@@ -87,10 +84,6 @@ export async function logAdminAction(
   }
 }
 
-/**
- * Helper "fire & forget" : lance le log en arrière-plan sans await.
- * Utile dans les controllers où on ne veut pas bloquer la réponse.
- */
 export function logAdminActionAsync(input: LogAdminActionInput): void {
   logAdminAction(input).catch((err) =>
     logger.error({ err }, "❌ Erreur async audit log")

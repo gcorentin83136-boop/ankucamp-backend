@@ -36,6 +36,10 @@ const envSchema = z.object({
   // Sentry (optionnel — désactivé si absent)
   SENTRY_DSN: z.string().url().optional(),
   SENTRY_ENVIRONMENT: z.string().default("development"),
+
+  // Backup DB (optionnel)
+  BACKUP_DIR: z.string().optional(),
+  BACKUP_RETENTION_DAYS: z.coerce.number().int().min(1).max(365).default(30),
 });
 
 const parsed = envSchema.safeParse(process.env);

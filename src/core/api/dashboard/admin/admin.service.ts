@@ -20,6 +20,7 @@ import {
 } from "../../../db/schema";
 import { AppError } from "../../../errors/AppError";
 import { getKycStats } from "../../kyc/kyc.service";
+import { getBackupStats } from "../../backup/backup.service";
 
 // ============================================================
 // STATS GLOBALES PLATEFORME
@@ -380,6 +381,9 @@ export async function getAdminSummary() {
     .orderBy(desc(kycRequests.created_at))
     .limit(5);
 
+  // 8. Backup stats
+  const backupStats = await getBackupStats();
+
   return {
     to_treat: {
       kyc_pending: kycPending?.count ?? 0,
@@ -431,6 +435,12 @@ export async function getAdminSummary() {
     recent: {
       reports: recentReports,
       kyc: recentKyc,
+    },
+    backup: {
+      count: backupStats.count,
+      total_size_mb: backupStats.total_size_mb,
+      last_backup: backupStats.last_backup,
+      retention_days: backupStats.retention_days,
     },
   };
 }

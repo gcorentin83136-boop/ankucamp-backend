@@ -48,6 +48,20 @@ stripe-*.txt
 # ================
 scripts/_*.ts
 scripts/test-*.ts
-# Firebase service account (secrets)
+
+# ================
+# FIREBASE (secrets)
+# ================
 firebase-service-account.json
 *-firebase-adminsdk-*.json
+
+# ================
+# BACKUPS DB (ne pas commit)
+# ================
+backups/
+*.dump
+
+# ================
+# SENTRY
+# ================
+.sentryclirc

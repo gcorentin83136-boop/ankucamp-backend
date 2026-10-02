@@ -69,11 +69,12 @@ describe("audit validation", () => {
   });
 
   describe("constantes", () => {
-    it("18 actions d'audit", () => {
-      expect(AUDIT_ACTIONS.length).toBe(18);
+    it("19 actions d'audit", () => {
+      expect(AUDIT_ACTIONS.length).toBe(19);
       expect(AUDIT_ACTIONS).toContain("kyc_approve");
       expect(AUDIT_ACTIONS).toContain("report_resolve");
       expect(AUDIT_ACTIONS).toContain("badge_grant");
+      expect(AUDIT_ACTIONS).toContain("backup_run");
     });
 
     it("14 types de cibles", () => {
