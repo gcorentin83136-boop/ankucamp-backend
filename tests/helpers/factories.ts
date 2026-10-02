@@ -13,7 +13,7 @@ interface CreateUserOptions {
   username?: string;
   email: string;
   password?: string;
-  role?: "particulier" | "professionnel";
+  role?: "particulier" | "professionnel" | "admin";
   birth_year?: number;
   address?: string;
   city?: string;
@@ -35,7 +35,6 @@ export async function createUser(options: CreateUserOptions) {
 
   const password_hash = await bcrypt.hash(password, 10);
 
-  // Génère un username unique basé sur le timestamp + random
   const defaultUsername = `test_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 
   const [user] = await testDb
@@ -58,7 +57,7 @@ export async function createUser(options: CreateUserOptions) {
   const token = signToken({
     id: user.id,
     email: user.email,
-    role: user.role as "particulier" | "professionnel",
+    role: user.role as "particulier" | "professionnel" | "admin",
   });
 
   return {

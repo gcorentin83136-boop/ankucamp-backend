@@ -67,7 +67,7 @@ function generateSecret(bytes = 20): string {
   return base32Encode(crypto.randomBytes(bytes));
 }
 
-function generateTOTP(
+export function generateTOTP(
   secret: string,
   time: number = Date.now()
 ): string {
