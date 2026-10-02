@@ -624,3 +624,27 @@ export const eventLikes = pgTable("event_likes", {
   user_id: integer("user_id").notNull(),
   created_at: timestamp("created_at").defaultNow(),
 });
+
+// ========================
+// AUDIT LOGS (traçabilité admin)
+// ========================
+export const auditLogs = pgTable("audit_logs", {
+  id: serial("id").primaryKey(),
+  admin_id: integer("admin_id").notNull(),
+  action: varchar("action", { length: 50 }).notNull(),
+  // 'kyc_approve' | 'kyc_reject' | 'report_resolve' | 'report_dismiss'
+  // | 'refund_approve' | 'refund_reject' | 'badge_grant' | 'badge_revoke'
+  // | 'category_create' | 'category_update' | 'category_delete'
+  // | 'promo_create' | 'promo_update' | 'promo_delete'
+  // | 'user_ban' | 'user_delete' | 'event_cancel' | 'other'
+  target_type: varchar("target_type", { length: 30 }),
+  // 'user' | 'shop' | 'product' | 'review' | 'kyc' | 'report' | 'refund'
+  // | 'badge' | 'category' | 'promo' | 'event' | 'post' | 'comment'
+  target_id: integer("target_id"),
+  description: text("description"),
+  metadata: text("metadata"),
+  // JSON stringifié de détails libres
+  ip_address: varchar("ip_address", { length: 50 }),
+  user_agent: text("user_agent"),
+  created_at: timestamp("created_at").defaultNow(),
+});

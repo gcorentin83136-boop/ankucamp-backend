@@ -40,6 +40,7 @@ import promoAdminRoutes from "./core/api/promo/promo.admin.routes";
 import promoSellerRoutes from "./core/api/promo/promo.seller.routes";
 import categoriesRoutes from "./core/api/categories/categories.routes";
 import categoriesAdminRoutes from "./core/api/categories/categories.admin.routes";
+import auditRoutes from "./core/api/audit/audit.routes";
 
 import { errorHandler } from "./core/errors/errorHandler";
 import { globalLimiter } from "./config/security";
@@ -160,6 +161,7 @@ app.use("/promo", promoRoutes);
 app.use("/admin/promo", promoAdminRoutes);
 app.use("/categories", categoriesRoutes);
 app.use("/admin/categories", categoriesAdminRoutes);
+app.use("/admin/audit", auditRoutes);
 
 // ===============
 // 404
