@@ -14,6 +14,7 @@ import {
   approveRefund,
   rejectRefund,
 } from "./refunds.service";
+import { logAdminActionAsync } from "../audit/audit.helper";
 
 function parseId(raw: string | undefined): number {
   const id = Number(raw);
@@ -128,6 +129,21 @@ export async function approve(req: AuthRequest, res: Response) {
     parsed.data.admin_comment
   );
 
+  // 📝 Audit log
+  logAdminActionAsync({
+    adminId: req.user.id,
+    action: "refund_approve",
+    targetType: "refund",
+    targetId: refundId,
+    description: `Remboursement #${refundId} approuvé et effectué via Stripe`,
+    metadata: {
+      admin_comment: parsed.data.admin_comment ?? null,
+      result,
+    },
+    ipAddress: req.ip ?? null,
+    userAgent: req.headers["user-agent"] ?? null,
+  });
+
   return res.json({
     success: true,
     message: "Remboursement approuvé et effectué via Stripe",
@@ -158,6 +174,18 @@ export async function reject(req: AuthRequest, res: Response) {
     req.user.id,
     parsed.data.admin_comment
   );
+
+  // 📝 Audit log
+  logAdminActionAsync({
+    adminId: req.user.id,
+    action: "refund_reject",
+    targetType: "refund",
+    targetId: refundId,
+    description: `Remboursement #${refundId} rejeté`,
+    metadata: { admin_comment: parsed.data.admin_comment ?? null },
+    ipAddress: req.ip ?? null,
+    userAgent: req.headers["user-agent"] ?? null,
+  });
 
   return res.json({
     success: true,

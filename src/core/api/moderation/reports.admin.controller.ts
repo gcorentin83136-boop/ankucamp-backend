@@ -13,6 +13,7 @@ import {
   dismissReport,
   getReportsStats,
 } from "./reports.service";
+import { logAdminActionAsync } from "../audit/audit.helper";
 
 export async function adminListReports(req: AuthRequest, res: Response) {
   const parsed = listReportsQuerySchema.safeParse(req.query);
@@ -54,6 +55,22 @@ export async function adminResolveReport(req: AuthRequest, res: Response) {
     parsed.data.admin_note ?? null,
     parsed.data.delete_content
   );
+
+  // 📝 Audit log
+  logAdminActionAsync({
+    adminId: req.user.id,
+    action: "report_resolve",
+    targetType: "report",
+    targetId: id,
+    description: `Signalement #${id} résolu${result.content_deleted ? " (contenu supprimé)" : ""}`,
+    metadata: {
+      content_deleted: result.content_deleted,
+      admin_note: parsed.data.admin_note ?? null,
+    },
+    ipAddress: req.ip ?? null,
+    userAgent: req.headers["user-agent"] ?? null,
+  });
+
   return res.json(result);
 }
 
@@ -72,6 +89,19 @@ export async function adminDismissReport(req: AuthRequest, res: Response) {
   }
 
   const result = await dismissReport(id, req.user.id, parsed.data.admin_note);
+
+  // 📝 Audit log
+  logAdminActionAsync({
+    adminId: req.user.id,
+    action: "report_dismiss",
+    targetType: "report",
+    targetId: id,
+    description: `Signalement #${id} rejeté — Motif: ${parsed.data.admin_note}`,
+    metadata: { admin_note: parsed.data.admin_note },
+    ipAddress: req.ip ?? null,
+    userAgent: req.headers["user-agent"] ?? null,
+  });
+
   return res.json(result);
 }
 

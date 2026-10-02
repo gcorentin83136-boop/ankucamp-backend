@@ -12,6 +12,7 @@ import {
   updateCategory,
   deleteCategory,
 } from "./categories.service";
+import { logAdminActionAsync } from "../audit/audit.helper";
 
 const router = Router();
 
@@ -29,6 +30,19 @@ router.post(
       );
     }
     const cat = await createCategory(parsed.data);
+
+    // 📝 Audit log
+    logAdminActionAsync({
+      adminId: req.user!.id,
+      action: "category_create",
+      targetType: "category",
+      targetId: cat.id,
+      description: `Catégorie "${cat.name}" créée`,
+      metadata: { name: cat.name, slug: cat.slug },
+      ipAddress: req.ip ?? null,
+      userAgent: req.headers["user-agent"] ?? null,
+    });
+
     return res.status(201).json({ success: true, category: cat });
   })
 );
@@ -48,6 +62,19 @@ router.put(
       );
     }
     const cat = await updateCategory(id, parsed.data);
+
+    // 📝 Audit log
+    logAdminActionAsync({
+      adminId: req.user!.id,
+      action: "category_update",
+      targetType: "category",
+      targetId: id,
+      description: `Catégorie #${id} modifiée`,
+      metadata: { updates: parsed.data },
+      ipAddress: req.ip ?? null,
+      userAgent: req.headers["user-agent"] ?? null,
+    });
+
     return res.json({ success: true, category: cat });
   })
 );
@@ -58,6 +85,18 @@ router.delete(
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) throw new AppError("ID invalide", 400);
     await deleteCategory(id);
+
+    // 📝 Audit log
+    logAdminActionAsync({
+      adminId: req.user!.id,
+      action: "category_delete",
+      targetType: "category",
+      targetId: id,
+      description: `Catégorie #${id} supprimée`,
+      ipAddress: req.ip ?? null,
+      userAgent: req.headers["user-agent"] ?? null,
+    });
+
     return res.status(204).send();
   })
 );

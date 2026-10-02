@@ -10,6 +10,7 @@ import {
   getKycStats,
 } from "./kyc.service";
 import { grantBadge } from "../badges/badges.service";
+import { logAdminActionAsync } from "../audit/audit.helper";
 
 const TYPE_TO_BADGE: Record<string, "agriculteur" | "artisan" | "createur"> = {
   agriculteur: "agriculteur",
@@ -51,6 +52,18 @@ export async function adminApproveKyc(req: AuthRequest, res: Response) {
     await grantBadge(result.user_id, specific, req.user.id).catch(() => {});
   }
 
+  // 📝 Audit log
+  logAdminActionAsync({
+    adminId: req.user.id,
+    action: "kyc_approve",
+    targetType: "kyc",
+    targetId: id,
+    description: `KYC approuvé pour user #${result.user_id} (type: ${result.type})`,
+    metadata: { user_id: result.user_id, kyc_type: result.type },
+    ipAddress: req.ip ?? null,
+    userAgent: req.headers["user-agent"] ?? null,
+  });
+
   return res.json({ success: true, user_id: result.user_id });
 }
 
@@ -69,6 +82,22 @@ export async function adminRejectKyc(req: AuthRequest, res: Response) {
   }
 
   const result = await rejectKycRequest(id, req.user.id, parsed.data.reason);
+
+  // 📝 Audit log
+  logAdminActionAsync({
+    adminId: req.user.id,
+    action: "kyc_reject",
+    targetType: "kyc",
+    targetId: id,
+    description: `KYC refusé pour user #${result.user_id} — Motif: ${parsed.data.reason}`,
+    metadata: {
+      user_id: result.user_id,
+      reason: parsed.data.reason,
+    },
+    ipAddress: req.ip ?? null,
+    userAgent: req.headers["user-agent"] ?? null,
+  });
+
   return res.json({ success: true, user_id: result.user_id });
 }
 
