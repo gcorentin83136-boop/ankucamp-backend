@@ -648,3 +648,20 @@ export const auditLogs = pgTable("audit_logs", {
   user_agent: text("user_agent"),
   created_at: timestamp("created_at").defaultNow(),
 });
+
+// ========================
+// USER 2FA (TOTP)
+// ========================
+export const userTwoFactor = pgTable("user_2fa", {
+  id: serial("id").primaryKey(),
+  user_id: integer("user_id").notNull().unique(),
+  secret: varchar("secret", { length: 255 }).notNull(),
+  enabled: integer("enabled").default(0).notNull(),
+  // 0 = setup en cours, 1 = actif
+  backup_codes: text("backup_codes"),
+  // JSON array de codes hashés bcrypt
+  enabled_at: timestamp("enabled_at"),
+  last_used_at: timestamp("last_used_at"),
+  created_at: timestamp("created_at").defaultNow(),
+  updated_at: timestamp("updated_at").defaultNow(),
+});

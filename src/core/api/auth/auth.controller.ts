@@ -36,6 +36,8 @@ export async function register(req: Request, res: Response) {
 
 // ============================================================
 // POST /auth/login
+// Si 2FA activée → renvoie { requires_2fa: true, temp_token }
+// Sinon → renvoie { user, token }
 // ============================================================
 export async function login(req: Request, res: Response) {
   const parsed = loginSchema.safeParse(req.body);
@@ -43,14 +45,24 @@ export async function login(req: Request, res: Response) {
     throw new AppError("Données invalides", 400, parsed.error.flatten().fieldErrors);
   }
 
-  // On passe req pour la création de session (IP + user-agent)
-  const { user, token } = await loginUser(parsed.data, req);
+  const result = await loginUser(parsed.data, req);
 
+  // Cas 2FA : le client doit appeler /auth/2fa/validate ensuite
+  if ("requires_2fa" in result && result.requires_2fa) {
+    return res.status(200).json({
+      success: true,
+      requires_2fa: true,
+      temp_token: result.temp_token,
+      message: "Saisis ton code 2FA pour finaliser la connexion",
+    });
+  }
+
+  // Cas normal
   return res.status(200).json({
     success: true,
     message: "Connexion réussie",
-    user,
-    token,
+    user: result.user,
+    token: result.token,
   });
 }
 

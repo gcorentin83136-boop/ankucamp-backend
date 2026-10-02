@@ -11,10 +11,10 @@ import {
   createSession,
   deleteSession,
 } from "../settings/sessions/sessions.service";
+import { is2FAEnabled, create2FATempToken } from "./2fa/2fa.service";
 
 const SALT_ROUNDS = 10;
 
-// Colonnes publiques (jamais de password_hash)
 const publicColumns = {
   id: users.id,
   first_name: users.first_name,
@@ -41,7 +41,6 @@ const publicColumns = {
 export async function registerUser(input: RegisterInput) {
   const { email, password } = input;
 
-  // Vérifier email unique
   const existing = await db
     .select({ id: users.id })
     .from(users)
@@ -52,17 +51,10 @@ export async function registerUser(input: RegisterInput) {
     throw new AppError("Cet email est déjà utilisé", 400);
   }
 
-  // Hash du mot de passe
   const password_hash = await bcrypt.hash(password, SALT_ROUNDS);
-
-  // Insertion (on ignore password pour ne pas le stocker en clair)
   const { password: _password, ...dataWithoutPassword } = input;
 
-  // Générer un username unique
-  const username = await generateUsername(
-    input.first_name,
-    input.last_name
-  );
+  const username = await generateUsername(input.first_name, input.last_name);
 
   const [created] = await db
     .insert(users)
@@ -74,7 +66,6 @@ export async function registerUser(input: RegisterInput) {
     })
     .returning(publicColumns);
 
-  // Créer les settings par défaut (idempotent)
   try {
     const [existingSettings] = await db
       .select({ id: userSettings.id })
@@ -90,7 +81,6 @@ export async function registerUser(input: RegisterInput) {
     console.error("❌ Erreur création user_settings:", err);
   }
 
-  // Envoyer l'email d'activation (async)
   sendActivationEmail(created.id, created.first_name, created.email).catch(
     (err) => console.error("Erreur envoi email activation:", err)
   );
@@ -100,9 +90,17 @@ export async function registerUser(input: RegisterInput) {
 
 /**
  * Login avec création de session.
- * @param req - Requête Express (pour récupérer IP + user-agent)
+ * Retourne :
+ *  - { user, token } si pas de 2FA
+ *  - { requires_2fa: true, temp_token } si 2FA activée (le user doit valider via /auth/2fa/validate)
  */
-export async function loginUser(input: LoginInput, req?: any) {
+export async function loginUser(
+  input: LoginInput,
+  req?: any
+): Promise<
+  | { user: any; token: string; requires_2fa?: false }
+  | { requires_2fa: true; temp_token: string; user?: never; token?: never }
+> {
   const { email, password } = input;
 
   const [user] = await db
@@ -120,20 +118,24 @@ export async function loginUser(input: LoginInput, req?: any) {
     throw new AppError("Email ou mot de passe incorrect", 401);
   }
 
+  // ⚡ Si 2FA activée → on renvoie un temp_token, on ne crée PAS de session
+  const has2FA = await is2FAEnabled(user.id);
+  if (has2FA) {
+    const temp_token = create2FATempToken(user.id);
+    return { requires_2fa: true, temp_token };
+  }
+
+  // Sinon : login normal
   const token = signToken({
     id: user.id,
     email: user.email,
     role: user.role as "professionnel" | "particulier",
   });
 
-  // ============================================================
-  // Créer la session en BDD (si req fourni)
-  // ============================================================
   if (req) {
     try {
       await createSession(user.id, token, req);
     } catch (err) {
-      // On ne bloque pas le login si la création de session échoue
       console.error("❌ Erreur création session:", err);
     }
   }
@@ -153,17 +155,11 @@ export async function loginUser(input: LoginInput, req?: any) {
   };
 }
 
-/**
- * Logout : supprime la session courante.
- */
 export async function logoutUser(token: string) {
   await deleteSession(token);
   return { success: true, message: "Déconnecté" };
 }
 
-/**
- * Active un compte via son token d'activation.
- */
 export async function activateAccount(token: string) {
   const [user] = await db
     .select()
@@ -194,9 +190,6 @@ export async function activateAccount(token: string) {
   return { success: true, message: "Compte activé" };
 }
 
-/**
- * Déclenche l'envoi d'un email de reset password.
- */
 export async function forgotPassword(email: string) {
   await sendResetPasswordEmail(email);
   return {
@@ -205,9 +198,6 @@ export async function forgotPassword(email: string) {
   };
 }
 
-/**
- * Réinitialise le mot de passe avec un token.
- */
 export async function resetPassword(token: string, newPassword: string) {
   const [user] = await db
     .select()

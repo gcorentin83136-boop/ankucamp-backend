@@ -5,6 +5,7 @@ import pinoHttp from "pino-http";
 import session from "express-session";
 
 import authRoutes from "./core/api/auth/auth.routes";
+import twoFactorRoutes from "./core/api/auth/2fa/2fa.routes";
 import usersRoutes from "./core/api/users/users.routes";
 import healthRoutes from "./core/api/health/health.routes";
 import shopsRoutes from "./core/api/shops/shops.routes";
@@ -127,8 +128,12 @@ app.get("/", (_req, res) => {
 // ===============
 // ROUTES
 // ===============
-app.use("/health", healthRoutes);
+
+// ⚠️ /auth/2fa AVANT /auth (ordre important !)
+app.use("/auth/2fa", twoFactorRoutes);
 app.use("/auth", authRoutes);
+
+app.use("/health", healthRoutes);
 app.use("/users", usersRoutes);
 app.use("/users", badgesRoutes);
 app.use("/shops", shopsRoutes);
