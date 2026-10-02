@@ -48,6 +48,7 @@ import { globalLimiter } from "./config/security";
 import { env } from "./config/env";
 import { logger } from "./config/logger";
 import { passport } from "./config/passport";
+import { sentryUserMiddleware } from "./config/sentry";
 
 const app = express();
 
@@ -94,6 +95,11 @@ app.use("/payments/webhook", raw({ type: "application/json" }));
 // PARSERS
 // ===============
 app.use(express.json({ limit: "1mb" }));
+
+// ===============
+// SENTRY — attache le user au contexte (si dispo)
+// ===============
+app.use(sentryUserMiddleware);
 
 // ===============
 // STRIPE (autres routes)

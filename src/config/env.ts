@@ -32,6 +32,10 @@ const envSchema = z.object({
   BREVO_API_KEY: z.string().startsWith("xkeysib-"),
   EMAIL_FROM: z.string().email(),
   EMAIL_FROM_NAME: z.string().min(1),
+
+  // Sentry (optionnel — désactivé si absent)
+  SENTRY_DSN: z.string().url().optional(),
+  SENTRY_ENVIRONMENT: z.string().default("development"),
 });
 
 const parsed = envSchema.safeParse(process.env);

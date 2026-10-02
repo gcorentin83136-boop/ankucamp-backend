@@ -1,6 +1,7 @@
 import { createServer } from "http";
 import { env } from "./config/env";
 import { logger } from "./config/logger";
+import { initSentry } from "./config/sentry";
 import app from "./app";
 import { testConnection } from "./core/db";
 import { startReviewScheduler } from "./core/api/orders/orders.scheduler";
@@ -8,6 +9,9 @@ import { startAccountDeletionScheduler } from "./core/api/settings/gdpr/accountD
 import { initWebSocket } from "./core/websocket/websocket.server";
 
 async function bootstrap() {
+  // ⚡ Sentry en tout premier (avant les autres imports sensibles)
+  initSentry();
+
   logger.info("🚀 Démarrage du serveur ANKUCAMP...");
   logger.info(`   Environnement : ${env.NODE_ENV}`);
   logger.info(`   Port          : ${env.PORT}`);
