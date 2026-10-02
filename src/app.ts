@@ -50,8 +50,14 @@ import { env } from "./config/env";
 import { logger } from "./config/logger";
 import { passport } from "./config/passport";
 import { sentryUserMiddleware } from "./config/sentry";
+import { setupSwagger } from "./config/swagger";
 
 const app = express();
+
+// ===============
+// SWAGGER UI (/api-docs)
+// ===============
+setupSwagger(app);
 
 // ===============
 // SÉCURITÉ

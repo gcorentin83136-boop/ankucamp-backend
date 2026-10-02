@@ -1,0 +1,3768 @@
+openapi: 3.0.3
+
+info:
+  title: ANKUCAMP API
+  description: |
+    API du réseau social local & marketplace ANKUCAMP.
+
+    **Authentification** : Bearer JWT (header `Authorization: Bearer <token>`)
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:3001
+    description: Développement
+
+tags:
+  - name: Health
+    description: Vérification de l'état de l'API
+  - name: Auth
+    description: Authentification email/password + OAuth Google
+  - name: 2FA
+    description: Double authentification TOTP
+  - name: Users
+    description: Profils utilisateurs
+  - name: Shops
+    description: Boutiques
+  - name: Products
+    description: Produits
+  - name: Orders
+    description: Commandes
+  - name: Payments
+    description: Paiements Stripe
+  - name: Refunds
+    description: Remboursements
+  - name: Reviews
+    description: Avis
+  - name: Posts
+    description: Réseau social — posts
+  - name: Friends
+    description: Amis
+  - name: Follows
+    description: Abonnements boutiques
+  - name: Conversations
+    description: Messagerie
+  - name: Notifications
+    description: Notifications
+  - name: Uploads
+    description: Upload de fichiers Cloudinary
+  - name: Settings
+    description: Paramètres utilisateur et boutique
+  - name: Search
+    description: Recherche globale et par proximité
+  - name: Geo
+    description: Géolocalisation
+  - name: Events
+    description: Événements locaux
+  - name: Articles
+    description: Blog / articles
+  - name: Cart
+    description: Panier
+  - name: Wishlist
+    description: Favoris produits
+  - name: Promo
+    description: Codes promo
+  - name: Categories
+    description: Catégories
+  - name: KYC
+    description: Vérification pro (SIRET)
+  - name: Badges
+    description: Badges de confiance
+  - name: Moderation
+    description: Signalements et modération
+  - name: Dashboard
+    description: Dashboards (buyer / seller / admin)
+  - name: Audit
+    description: Audit log admin
+  - name: Backup
+    description: Backup DB admin
+  - name: Admin
+    description: Endpoints admin transverses
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  responses:
+    BadRequest:
+      description: Données invalides
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unauthorized:
+      description: Non authentifié
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Forbidden:
+      description: Accès interdit
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: Ressource introuvable
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Conflict:
+      description: Conflit (déjà existant)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+          example: "Erreur"
+        errors:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+
+paths:
+  # ============================================================
+  # HEALTH
+  # ============================================================
+  /health:
+    get:
+      tags: [Health]
+      summary: Vérifie que l'API répond
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  status: { type: string, example: "ok" }
+                  timestamp: { type: string, format: date-time }
+
+  # ============================================================
+  # AUTH
+  # ============================================================
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Inscription avec email + password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [first_name, last_name, email, password, role]
+              properties:
+                first_name: { type: string, maxLength: 100, example: "Alice" }
+                last_name: { type: string, maxLength: 100, example: "Dupont" }
+                email: { type: string, format: email, example: "alice@test.com" }
+                password: { type: string, minLength: 8, example: "motdepasse123" }
+                birth_year: { type: integer, minimum: 1900, example: 1995 }
+                address: { type: string, maxLength: 255 }
+                city: { type: string, maxLength: 100 }
+                postal_code: { type: string, maxLength: 20 }
+                country: { type: string, maxLength: 100, default: "France" }
+                role: { type: string, enum: [particulier, professionnel] }
+      responses:
+        "201":
+          description: Compte créé
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  user: { type: object }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Connexion (email + password) — renvoie token OU requires_2fa
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        "200":
+          description: |
+            - Sans 2FA : `{ success, user, token }`
+            - Avec 2FA activée : `{ success, requires_2fa: true, temp_token }`
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    properties:
+                      success: { type: boolean }
+                      user: { type: object }
+                      token: { type: string }
+                  - type: object
+                    properties:
+                      success: { type: boolean }
+                      requires_2fa: { type: boolean, example: true }
+                      temp_token: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Déconnexion (révoque la session courante)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Déconnecté }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /auth/activate:
+    post:
+      tags: [Auth]
+      summary: Active un compte via token d'activation (reçu par email)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string }
+      responses:
+        "200": { description: Compte activé }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /auth/forgot-password:
+    post:
+      tags: [Auth]
+      summary: Demande un lien de réinitialisation par email
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        "200":
+          description: Email envoyé (toujours 200 même si email inexistant)
+
+  /auth/reset-password:
+    post:
+      tags: [Auth]
+      summary: Réinitialise le mot de passe via token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, new_password]
+              properties:
+                token: { type: string }
+                new_password: { type: string, minLength: 8 }
+      responses:
+        "200": { description: Mot de passe réinitialisé }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /auth/google:
+    get:
+      tags: [Auth]
+      summary: Redirige vers Google OAuth (pas d'auth)
+      responses:
+        "302": { description: Redirect vers Google }
+
+  /auth/google/callback:
+    get:
+      tags: [Auth]
+      summary: Callback OAuth — redirige vers le front avec token
+      responses:
+        "302":
+          description: Redirect vers le front (avec `?token=JWT` en URL)
+
+  # ============================================================
+  # 2FA
+  # ============================================================
+  /auth/2fa/status:
+    get:
+      tags: [2FA]
+      summary: Statut 2FA de l'utilisateur connecté
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Statut
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  enabled: { type: boolean }
+                  setup_in_progress: { type: boolean }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /auth/2fa/setup:
+    post:
+      tags: [2FA]
+      summary: Génère un secret TOTP + QR code (étape 1)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Secret + QR code + URI otpauth
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  secret: { type: string }
+                  qr_code: { type: string, description: "Data URL PNG base64" }
+                  otpauth: { type: string }
+
+  /auth/2fa/verify:
+    post:
+      tags: [2FA]
+      summary: Valide le 1er code TOTP → active la 2FA + retourne 10 backup codes
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: { type: string, pattern: "^\\d{6}$" }
+      responses:
+        "200":
+          description: 2FA activée
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  enabled: { type: boolean }
+                  backup_codes:
+                    type: array
+                    items: { type: string }
+
+  /auth/2fa/disable:
+    post:
+      tags: [2FA]
+      summary: Désactive la 2FA (password + code)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password, code]
+              properties:
+                password: { type: string }
+                code: { type: string, description: "Code TOTP ou backup code" }
+      responses:
+        "200": { description: 2FA désactivée }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /auth/2fa/validate:
+    post:
+      tags: [2FA]
+      summary: Login étape 2 (publique) — valide code + temp_token → JWT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [temp_token, code]
+              properties:
+                temp_token: { type: string }
+                code: { type: string }
+      responses:
+        "200":
+          description: Connexion réussie
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  token: { type: string }
+                  user: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  # ============================================================
+  # USERS
+  # ============================================================
+  /users/me:
+    get:
+      tags: [Users]
+      summary: Mon profil complet
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Mon profil
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  user: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    put:
+      tags: [Users]
+      summary: Modifie mon profil
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                first_name: { type: string }
+                last_name: { type: string }
+                username: { type: string, pattern: "^[a-z0-9_]{3,30}$" }
+                email: { type: string, format: email }
+                birth_year: { type: integer }
+                address: { type: string }
+                city: { type: string }
+                postal_code: { type: string }
+                country: { type: string }
+                bio: { type: string, maxLength: 500 }
+                website: { type: string, format: uri }
+                location: { type: string }
+                cover_url: { type: string, format: uri }
+      responses:
+        "200": { description: Profil mis à jour }
+
+  /users/me/privacy:
+    put:
+      tags: [Users]
+      summary: Modifie la confidentialité (is_private)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [is_private]
+              properties:
+                is_private: { type: boolean }
+      responses:
+        "200": { description: Confidentialité mise à jour }
+
+  /users:
+    get:
+      tags: [Users]
+      summary: Liste paginée des users
+      parameters:
+        - { in: query, name: limit, schema: { type: integer, default: 50, maximum: 100 } }
+        - { in: query, name: offset, schema: { type: integer, default: 0 } }
+      responses:
+        "200":
+          description: Liste
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  users:
+                    type: array
+                    items: { type: object }
+
+  /users/u/{username}:
+    get:
+      tags: [Users]
+      summary: Profil public par username
+      parameters:
+        - { in: path, name: username, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Profil }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /users/{id}:
+    get:
+      tags: [Users]
+      summary: Profil par ID
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Profil }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /users/{id}/stats:
+    get:
+      tags: [Users]
+      summary: Stats d'un user (posts, avis, etc.)
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Stats }
+
+  /users/{id}/friends:
+    get:
+      tags: [Users]
+      summary: Amis d'un user (auth optionnelle si profil privé)
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+        - { in: query, name: limit, schema: { type: integer, default: 20 } }
+        - { in: query, name: offset, schema: { type: integer, default: 0 } }
+      responses:
+        "200": { description: Liste d'amis }
+
+  # ============================================================
+  # BADGES
+  # ============================================================
+  /users/{id}/badges:
+    get:
+      tags: [Badges]
+      summary: Badges actifs d'un user
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Liste
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  badges:
+                    type: array
+                    items: { type: string }
+    post:
+      tags: [Badges]
+      summary: (Admin) Attribue un badge à un user
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [badge]
+              properties:
+                badge:
+                  type: string
+                  enum: [verified, agriculteur, artisan, createur, bio, producteur_local]
+      responses:
+        "201": { description: Badge attribué }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /users/{id}/badges/{badge}:
+    delete:
+      tags: [Badges]
+      summary: (Admin) Révoque un badge
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+        - { in: path, name: badge, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Badge révoqué }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ============================================================
+  # CONVERSATIONS + MESSAGES
+  # ============================================================
+  /conversations:
+    get:
+      tags: [Conversations]
+      summary: Liste mes conversations
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Liste
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  conversations:
+                    type: array
+                    items: { type: object }
+    post:
+      tags: [Conversations]
+      summary: Crée une conversation (direct ou groupe)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type]
+              properties:
+                type: { type: string, enum: [direct, group] }
+                name: { type: string, description: "Requis si type=group" }
+                participant_ids:
+                  type: array
+                  items: { type: integer }
+      responses:
+        "201": { description: Conversation créée }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /conversations/{id}:
+    get:
+      tags: [Conversations]
+      summary: Détail d'une conversation
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Détail }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [Conversations]
+      summary: Modifie une conversation (nom/avatar de groupe — admin)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                avatar_url: { type: string, format: uri }
+      responses:
+        "200": { description: Modifiée }
+    delete:
+      tags: [Conversations]
+      summary: Supprime une conversation (admin du groupe)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "204": { description: Supprimée }
+
+  /conversations/{id}/leave:
+    post:
+      tags: [Conversations]
+      summary: Quitte la conversation
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Quitté }
+
+  /conversations/{id}/participants:
+    post:
+      tags: [Conversations]
+      summary: Ajoute un participant (admin du groupe)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_id]
+              properties:
+                user_id: { type: integer }
+      responses:
+        "201": { description: Participant ajouté }
+
+  /conversations/{id}/participants/{userId}:
+    delete:
+      tags: [Conversations]
+      summary: Retire un participant (admin du groupe)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+        - { in: path, name: userId, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Participant retiré }
+
+  /conversations/{id}/messages:
+    get:
+      tags: [Conversations]
+      summary: Liste les messages (paginés)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+        - { in: query, name: limit, schema: { type: integer, default: 50 } }
+        - { in: query, name: offset, schema: { type: integer, default: 0 } }
+      responses:
+        "200": { description: Liste }
+    post:
+      tags: [Conversations]
+      summary: Envoie un message
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                content: { type: string }
+                type: { type: string, enum: [text, image, file], default: text }
+                media_url: { type: string, format: uri }
+                reply_to_message_id: { type: integer, nullable: true }
+      responses:
+        "201": { description: Envoyé }
+
+  /conversations/{id}/read:
+    post:
+      tags: [Conversations]
+      summary: Marque les messages comme lus jusqu'à un message_id
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [last_read_message_id]
+              properties:
+                last_read_message_id: { type: integer }
+      responses:
+        "200": { description: Lu }
+
+  /messages/{messageId}:
+    put:
+      tags: [Conversations]
+      summary: Édite un message (auteur uniquement)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: messageId, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content: { type: string }
+      responses:
+        "200": { description: Édité }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    delete:
+      tags: [Conversations]
+      summary: Supprime un message (soft delete)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: messageId, required: true, schema: { type: integer } }
+      responses:
+        "204": { description: Supprimé }
+
+  /messages/{messageId}/reactions:
+    post:
+      tags: [Conversations]
+      summary: Toggle une réaction emoji
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: messageId, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [emoji]
+              properties:
+                emoji: { type: string, maxLength: 10 }
+      responses:
+        "200": { description: Réaction toggled }
+
+  # ============================================================
+  # NOTIFICATIONS
+  # ============================================================
+  /notifications/me:
+    get:
+      tags: [Notifications]
+      summary: Liste mes notifications
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: query, name: limit, schema: { type: integer, default: 50 } }
+        - { in: query, name: offset, schema: { type: integer, default: 0 } }
+      responses:
+        "200": { description: Liste }
+
+  /notifications/me/unread-count:
+    get:
+      tags: [Notifications]
+      summary: Nombre de notifications non lues (badge)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Compteur
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  count: { type: integer }
+
+  /notifications/read-all:
+    put:
+      tags: [Notifications]
+      summary: Marque TOUTES mes notifications comme lues
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Marquées lues }
+
+  /notifications/{id}/read:
+    put:
+      tags: [Notifications]
+      summary: Marque UNE notification comme lue
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Marquée lue }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /notifications/{id}:
+    delete:
+      tags: [Notifications]
+      summary: Supprime une notification
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "204": { description: Supprimée }
+
+  /notifications/push/subscribe:
+    post:
+      tags: [Notifications]
+      summary: Enregistre un token FCM (push notifications)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, platform]
+              properties:
+                token: { type: string }
+                platform: { type: string, enum: [ios, android, web] }
+                device_info: { type: string }
+      responses:
+        "201": { description: Token enregistré }
+
+  /notifications/push/unsubscribe:
+    delete:
+      tags: [Notifications]
+      summary: Supprime un token FCM
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string }
+      responses:
+        "200": { description: Token supprimé }
+
+  # ============================================================
+  # UPLOADS (multipart/form-data)
+  # ============================================================
+  /uploads/avatar:
+    post:
+      tags: [Uploads]
+      summary: Upload un avatar (multipart)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        "200":
+          description: URL Cloudinary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  url: { type: string, format: uri }
+
+  /uploads/cover:
+    post:
+      tags: [Uploads]
+      summary: Upload une cover (multipart)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        "200": { description: URL Cloudinary }
+
+  /uploads/shop-logo:
+    post:
+      tags: [Uploads]
+      summary: Upload un logo de boutique (multipart)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        "200": { description: URL Cloudinary }
+
+  /uploads/product:
+    post:
+      tags: [Uploads]
+      summary: Upload une image de produit (multipart)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        "200": { description: URL Cloudinary }
+
+  /uploads/post-media:
+    post:
+      tags: [Uploads]
+      summary: Upload un média de post (multipart)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        "200": { description: URL Cloudinary }
+
+  # ============================================================
+  # SETTINGS — ACCOUNT
+  # ============================================================
+  /settings/account/email:
+    put:
+      tags: [Settings]
+      summary: Change mon email
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        "200": { description: Email modifié }
+
+  /settings/account/password:
+    put:
+      tags: [Settings]
+      summary: Change mon mot de passe (révoque les autres sessions)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [current_password, new_password]
+              properties:
+                current_password: { type: string }
+                new_password: { type: string, minLength: 8 }
+      responses:
+        "200": { description: Mot de passe modifié }
+
+  /settings/account/username:
+    put:
+      tags: [Settings]
+      summary: Change mon username
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username]
+              properties:
+                username: { type: string, pattern: "^[a-z0-9_]{3,30}$" }
+      responses:
+        "200": { description: Username modifié }
+
+  /settings/account/info:
+    put:
+      tags: [Settings]
+      summary: Met à jour mes infos personnelles
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                first_name: { type: string }
+                last_name: { type: string }
+                birth_year: { type: integer }
+                address: { type: string }
+                city: { type: string }
+                postal_code: { type: string }
+      responses:
+        "200": { description: Infos modifiées }
+
+  /settings/account/deactivate:
+    delete:
+      tags: [Settings]
+      summary: Désactive mon compte
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string }
+      responses:
+        "200": { description: Compte désactivé }
+
+  # ============================================================
+  # SETTINGS — NOTIFICATIONS
+  # ============================================================
+  /settings/notifications:
+    get:
+      tags: [Settings]
+      summary: Récupère mes préférences notifications (lazy create)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Préférences }
+    put:
+      tags: [Settings]
+      summary: Met à jour toutes mes préférences notifications
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email_order_updates: { type: boolean }
+                email_new_messages: { type: boolean }
+                email_social_activity: { type: boolean }
+                email_marketing: { type: boolean }
+                push_order_updates: { type: boolean }
+                push_new_messages: { type: boolean }
+                push_social_activity: { type: boolean }
+      responses:
+        "200": { description: Préférences mises à jour }
+
+  /settings/notifications/email:
+    put:
+      tags: [Settings]
+      summary: Met à jour uniquement les préférences email
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Préférences email mises à jour }
+
+  /settings/notifications/push:
+    put:
+      tags: [Settings]
+      summary: Met à jour uniquement les préférences push
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Préférences push mises à jour }
+
+  # ============================================================
+  # SETTINGS — PRIVACY
+  # ============================================================
+  /settings/privacy:
+    get:
+      tags: [Settings]
+      summary: Récupère mes paramètres de confidentialité
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Paramètres }
+    put:
+      tags: [Settings]
+      summary: Met à jour tous mes paramètres de confidentialité
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Mise à jour }
+
+  /settings/privacy/visibility:
+    put:
+      tags: [Settings]
+      summary: Change la visibilité du profil
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [profile_visibility]
+              properties:
+                profile_visibility:
+                  type: string
+                  enum: [public, friends, private]
+      responses:
+        "200": { description: Visibilité modifiée }
+
+  /settings/privacy/messages:
+    put:
+      tags: [Settings]
+      summary: Change qui peut m'envoyer des messages
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [allow_messages_from]
+              properties:
+                allow_messages_from:
+                  type: string
+                  enum: [everyone, friends, nobody]
+      responses:
+        "200": { description: Paramètre modifié }
+
+  # ============================================================
+  # SETTINGS — SHOP
+  # ============================================================
+  /settings/shop/{shopId}:
+    get:
+      tags: [Settings]
+      summary: Récupère les paramètres d'une boutique (lazy create)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: shopId, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Paramètres }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    put:
+      tags: [Settings]
+      summary: Met à jour les paramètres d'une boutique
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: shopId, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Mise à jour }
+
+  /settings/shop/{shopId}/vacation:
+    put:
+      tags: [Settings]
+      summary: Active/désactive le mode vacances
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: shopId, required: true, schema: { type: integer } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                vacation_mode: { type: boolean }
+                vacation_message: { type: string }
+                vacation_until: { type: string, format: date-time, nullable: true }
+      responses:
+        "200": { description: Mode vacances mis à jour }
+
+  /settings/shop/{shopId}/hidden:
+    put:
+      tags: [Settings]
+      summary: Masque/démasque la boutique
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: shopId, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [is_hidden]
+              properties:
+                is_hidden: { type: boolean }
+      responses:
+        "200": { description: Statut modifié }
+
+  /settings/shop/{shopId}/returns:
+    put:
+      tags: [Settings]
+      summary: Active/désactive les retours
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: shopId, required: true, schema: { type: integer } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                accepts_returns: { type: boolean }
+                return_days: { type: integer, default: 14 }
+      responses:
+        "200": { description: Retours configurés }
+
+  /settings/shop/{shopId}/contact:
+    put:
+      tags: [Settings]
+      summary: Met à jour contact (phone + email)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: shopId, required: true, schema: { type: integer } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                contact_phone: { type: string }
+                contact_email: { type: string, format: email, nullable: true }
+      responses:
+        "200": { description: Contact mis à jour }
+
+  # ============================================================
+  # SETTINGS — SESSIONS
+  # ============================================================
+  /settings/sessions:
+    get:
+      tags: [Settings]
+      summary: Liste mes sessions actives
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Sessions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  sessions:
+                    type: array
+                    items: { type: object }
+
+  /settings/sessions/{id}:
+    delete:
+      tags: [Settings]
+      summary: Révoque une session (pas la courante)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Session révoquée }
+        "400": { description: "Impossible de révoquer la session courante" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /settings/sessions/all:
+    delete:
+      tags: [Settings]
+      summary: Révoque TOUTES les autres sessions
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Sessions révoquées
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  count: { type: integer, description: "Nombre de sessions révoquées" }
+
+  # ============================================================
+  # SETTINGS — GDPR
+  # ============================================================
+  /settings/gdpr/export:
+    post:
+      tags: [Settings]
+      summary: Demande un export RGPD de mes données
+      security: [{ bearerAuth: [] }]
+      responses:
+        "202": { description: "Demande créée (traitement async)" }
+        "409": { description: "Un export est déjà en cours" }
+
+  /settings/gdpr/delete:
+    post:
+      tags: [Settings]
+      summary: Programme la suppression de mon compte (30 jours)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string }
+      responses:
+        "201": { description: Suppression programmée }
+    delete:
+      tags: [Settings]
+      summary: Annule ma demande de suppression
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Suppression annulée }
+
+  /settings/gdpr/acceptance:
+    post:
+      tags: [Settings]
+      summary: Enregistre une acceptation CGU / privacy / cookies
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [document_type, document_version]
+              properties:
+                document_type:
+                  type: string
+                  enum: [cgu, privacy, cookies]
+                document_version: { type: string }
+      responses:
+        "201": { description: Acceptation enregistrée }
+
+
+  # ============================================================
+  # ORDERS
+  # ============================================================
+  /orders/me:
+    get:
+      tags: [Orders]
+      summary: Liste mes commandes (acheteur)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Liste
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  orders:
+                    type: array
+                    items: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /orders/seller/me:
+    get:
+      tags: [Orders]
+      summary: Liste les commandes reçues (vendeur)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Liste
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  orders:
+                    type: array
+                    items: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /orders:
+    post:
+      tags: [Orders]
+      summary: Crée une commande
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [seller_id, delivery_method, items]
+              properties:
+                seller_id: { type: integer }
+                delivery_method:
+                  type: string
+                  enum: [pickup, delivery, shipping]
+                delivery_address: { type: string, nullable: true }
+                items:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [product_id, quantity]
+                    properties:
+                      product_id: { type: integer }
+                      quantity: { type: integer, minimum: 1 }
+      responses:
+        "201": { description: Commande créée }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /orders/{id}/invoice:
+    get:
+      tags: [Orders]
+      summary: Redirige vers la facture PDF Cloudinary
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "302": { description: Redirect vers la facture }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /orders/{id}/invoice/resend:
+    post:
+      tags: [Orders]
+      summary: Renvoie la facture par email
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Facture renvoyée }
+        "400": { description: Commande non payée }
+
+  /orders/{id}:
+    get:
+      tags: [Orders]
+      summary: Détail d'une commande (buyer ou seller)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Détail }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [Orders]
+      summary: Supprime une commande pending (buyer)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "204": { description: Supprimée }
+        "400": { description: Commande non annulable }
+
+  /orders/{id}/status:
+    put:
+      tags: [Orders]
+      summary: Change le statut (buyer annule, seller confirme/expédie/livre)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [pending, confirmed, shipped, delivered, cancelled]
+                tracking_number: { type: string, nullable: true }
+      responses:
+        "200": { description: Statut mis à jour }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  # ============================================================
+  # PAYMENTS (Stripe)
+  # ============================================================
+  /payments/webhook:
+    post:
+      tags: [Payments]
+      summary: Webhook Stripe (raw body, PAS d'auth)
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        "200":
+          description: Événement traité
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  received: { type: boolean, example: true }
+        "400": { description: Signature invalide }
+
+  /payments/checkout:
+    post:
+      tags: [Payments]
+      summary: Crée une session Stripe Checkout pour une commande
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [order_id]
+              properties:
+                order_id: { type: integer }
+      responses:
+        "201":
+          description: Session créée
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  url: { type: string, format: uri }
+                  session_id: { type: string }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /payments/me:
+    get:
+      tags: [Payments]
+      summary: Liste mes paiements
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Liste
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  payments:
+                    type: array
+                    items: { type: object }
+
+  /payments/order/{orderId}:
+    get:
+      tags: [Payments]
+      summary: Récupère le paiement d'une commande
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: orderId, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Paiement }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /payments/connect/onboard:
+    post:
+      tags: [Payments]
+      summary: Génère un lien d'onboarding Stripe Connect (pro only)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Lien d'onboarding
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  onboarding_url: { type: string, format: uri }
+        "403": { description: Seuls les pros peuvent se connecter à Stripe }
+
+  /payments/connect/status:
+    get:
+      tags: [Payments]
+      summary: Statut Stripe Connect du pro
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Statut
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  status:
+                    type: string
+                    enum: [not_connected, pending, pending_verification, active]
+                  charges_enabled: { type: boolean }
+                  payouts_enabled: { type: boolean }
+                  account_id: { type: string }
+
+  # ============================================================
+  # REFUNDS
+  # ============================================================
+  /refunds/request:
+    post:
+      tags: [Refunds]
+      summary: Demande un remboursement (buyer)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [order_id, reason]
+              properties:
+                order_id: { type: integer }
+                reason: { type: string }
+      responses:
+        "201": { description: Demande créée }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /refunds/me:
+    get:
+      tags: [Refunds]
+      summary: Liste mes demandes de remboursement (buyer)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Liste
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  refunds:
+                    type: array
+                    items: { type: object }
+
+  /refunds:
+    get:
+      tags: [Refunds]
+      summary: Liste tous les remboursements (admin)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: query, name: status, schema: { type: string, enum: [pending, approved, rejected, refunded, failed] } }
+        - { in: query, name: limit, schema: { type: integer, default: 20 } }
+        - { in: query, name: offset, schema: { type: integer, default: 0 } }
+      responses:
+        "200": { description: Liste }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /refunds/{id}/approve:
+    put:
+      tags: [Refunds]
+      summary: Approuve un remboursement (admin) — déclenche le remboursement Stripe
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                admin_comment: { type: string, nullable: true }
+      responses:
+        "200": { description: Remboursement approuvé et effectué }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /refunds/{id}/reject:
+    put:
+      tags: [Refunds]
+      summary: Rejette un remboursement (admin)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                admin_comment: { type: string, nullable: true }
+      responses:
+        "200": { description: Remboursement rejeté }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /refunds/{id}:
+    get:
+      tags: [Refunds]
+      summary: Détail d'un remboursement (buyer ou admin)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Détail }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ============================================================
+  # REVIEWS
+  # ============================================================
+  /reviews/product/{id}/stats:
+    get:
+      tags: [Reviews]
+      summary: Stats d'un produit (moyenne + distribution 1-5 étoiles)
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Stats
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  average: { type: number, example: 4.5 }
+                  total: { type: integer }
+                  distribution:
+                    type: object
+                    properties:
+                      "1": { type: integer }
+                      "2": { type: integer }
+                      "3": { type: integer }
+                      "4": { type: integer }
+                      "5": { type: integer }
+
+  /reviews/product/{id}:
+    get:
+      tags: [Reviews]
+      summary: Liste les avis d'un produit
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+        - { in: query, name: limit, schema: { type: integer, default: 20 } }
+        - { in: query, name: offset, schema: { type: integer, default: 0 } }
+        - { in: query, name: sort, schema: { type: string, enum: [recent, rating_desc, rating_asc], default: recent } }
+      responses:
+        "200":
+          description: Liste
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  reviews:
+                    type: array
+                    items: { type: object }
+
+  /reviews:
+    post:
+      tags: [Reviews]
+      summary: Crée un avis (buyer, commande livrée)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [order_id, product_id, rating]
+              properties:
+                order_id: { type: integer }
+                product_id: { type: integer }
+                rating: { type: integer, minimum: 1, maximum: 5 }
+                comment: { type: string, nullable: true }
+      responses:
+        "201": { description: Avis créé }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /reviews/me:
+    get:
+      tags: [Reviews]
+      summary: Liste mes avis (en tant qu'auteur)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Liste }
+
+  /reviews/seller/me:
+    get:
+      tags: [Reviews]
+      summary: Liste les avis reçus (en tant que vendeur)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: query, name: limit, schema: { type: integer, default: 20 } }
+        - { in: query, name: offset, schema: { type: integer, default: 0 } }
+        - { in: query, name: sort, schema: { type: string, enum: [recent, rating_desc, rating_asc], default: recent } }
+      responses:
+        "200": { description: Liste }
+
+  /reviews/{id}/report:
+    post:
+      tags: [Reviews]
+      summary: Signale un avis (vendeur uniquement)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string }
+      responses:
+        "200": { description: Avis signalé }
+        "403": { description: Seul le vendeur concerné peut signaler }
+
+  /reviews/{id}:
+    delete:
+      tags: [Reviews]
+      summary: Supprime son avis (auteur)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "204": { description: Supprimé }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+        
+  # ============================================================
+  # POSTS (réseau social)
+  # ============================================================
+  /posts/feed:
+    get:
+      tags: [Posts]
+      summary: Feed social (posts + événements d'amis)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: query, name: limit, schema: { type: integer, default: 20, maximum: 50 } }
+        - { in: query, name: offset, schema: { type: integer, default: 0 } }
+      responses:
+        "200":
+          description: Feed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  count: { type: integer }
+                  posts:
+                    type: array
+                    items: { type: object }
+                  events_from_friends:
+                    type: array
+                    items: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /posts/me:
+    get:
+      tags: [Posts]
+      summary: Liste mes posts
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: query, name: limit, schema: { type: integer, default: 20 } }
+        - { in: query, name: offset, schema: { type: integer, default: 0 } }
+      responses:
+        "200": { description: Liste }
+
+  /posts:
+    post:
+      tags: [Posts]
+      summary: Crée un post
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                content: { type: string, maxLength: 5000, nullable: true }
+                media_urls:
+                  type: array
+                  maxItems: 4
+                  items: { type: string, format: uri }
+                visibility:
+                  type: string
+                  enum: [public, friends, private]
+                  default: public
+      responses:
+        "201": { description: Post créé }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /posts/share-event/{eventId}:
+    post:
+      tags: [Posts]
+      summary: Partage un événement dans le réseau social
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: eventId, required: true, schema: { type: integer } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                share_comment: { type: string, maxLength: 2000, nullable: true }
+                visibility:
+                  type: string
+                  enum: [public, friends, private]
+                  default: public
+      responses:
+        "201": { description: Événement partagé }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /posts/events/{eventId}/like:
+    post:
+      tags: [Posts]
+      summary: Toggle un like sur un événement
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: eventId, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Toggle effectué
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  liked: { type: boolean }
+                  likes_count: { type: integer }
+
+  /posts/{id}:
+    get:
+      tags: [Posts]
+      summary: Détail d'un post (auth optionnelle)
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Post }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [Posts]
+      summary: Modifie un post (auteur)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                content: { type: string, nullable: true }
+                visibility:
+                  type: string
+                  enum: [public, friends, private]
+      responses:
+        "200": { description: Modifié }
+    delete:
+      tags: [Posts]
+      summary: Supprime un post (auteur)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "204": { description: Supprimé }
+
+  /posts/{id}/like:
+    post:
+      tags: [Posts]
+      summary: Toggle un like sur un post
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Toggle effectué }
+
+  /posts/{id}/likes:
+    get:
+      tags: [Posts]
+      summary: Liste les likes d'un post
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+        - { in: query, name: limit, schema: { type: integer, default: 20 } }
+        - { in: query, name: offset, schema: { type: integer, default: 0 } }
+      responses:
+        "200": { description: Liste }
+
+  /posts/{id}/comments:
+    post:
+      tags: [Posts]
+      summary: Ajoute un commentaire
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content: { type: string, minLength: 1, maxLength: 2000 }
+                parent_comment_id: { type: integer, nullable: true }
+      responses:
+        "201": { description: Commentaire créé }
+    get:
+      tags: [Posts]
+      summary: Liste les commentaires (structurés racine + réponses)
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+        - { in: query, name: limit, schema: { type: integer, default: 20 } }
+        - { in: query, name: offset, schema: { type: integer, default: 0 } }
+      responses:
+        "200": { description: Liste }
+
+  /posts/{id}/comments/{commentId}:
+    delete:
+      tags: [Posts]
+      summary: Supprime un commentaire (auteur ou auteur du post)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+        - { in: path, name: commentId, required: true, schema: { type: integer } }
+      responses:
+        "204": { description: Supprimé }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /posts/{id}/share:
+    post:
+      tags: [Posts]
+      summary: Partage un post
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                share_comment: { type: string, maxLength: 2000, nullable: true }
+                visibility:
+                  type: string
+                  enum: [public, friends, private]
+                  default: public
+      responses:
+        "201": { description: Post partagé }
+
+  /posts/user/{userId}:
+    get:
+      tags: [Posts]
+      summary: Liste les posts d'un user
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: userId, required: true, schema: { type: integer } }
+        - { in: query, name: limit, schema: { type: integer, default: 20 } }
+        - { in: query, name: offset, schema: { type: integer, default: 0 } }
+      responses:
+        "200": { description: Liste }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  # ============================================================
+  # FRIENDS (amis)
+  # ============================================================
+  /friends/stats:
+    get:
+      tags: [Friends]
+      summary: Stats d'amis (nb amis, demandes en attente, envoyées)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Stats
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  stats: { type: object }
+
+  /friends/me:
+    get:
+      tags: [Friends]
+      summary: Liste mes amis acceptés
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Liste }
+
+  /friends/requests/received:
+    get:
+      tags: [Friends]
+      summary: Liste les demandes reçues (pending)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Liste }
+
+  /friends/requests/sent:
+    get:
+      tags: [Friends]
+      summary: Liste les demandes envoyées (pending)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Liste }
+
+  /friends/request/{userId}:
+    post:
+      tags: [Friends]
+      summary: Envoie une demande d'ami
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: userId, required: true, schema: { type: integer } }
+      responses:
+        "201": { description: Demande envoyée }
+        "400": { description: Doublon ou auto-demande }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /friends/{id}/accept:
+    put:
+      tags: [Friends]
+      summary: Accepte une demande d'ami
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Acceptée }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /friends/{id}/decline:
+    put:
+      tags: [Friends]
+      summary: Refuse une demande d'ami
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Refusée }
+
+  /friends/{id}/cancel:
+    delete:
+      tags: [Friends]
+      summary: Annule une demande d'ami envoyée (pending)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Annulée }
+
+  /friends/{userId}:
+    delete:
+      tags: [Friends]
+      summary: Supprime un ami accepté
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: userId, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Ami supprimé }
+
+  /friends/status/{userId}:
+    get:
+      tags: [Friends]
+      summary: Statut de relation avec un user (none/pending/accepted/...)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: userId, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Statut
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  status: { type: string }
+
+  # ============================================================
+  # FOLLOWS (abonnements boutiques)
+  # ============================================================
+  /follows/me:
+    get:
+      tags: [Follows]
+      summary: Liste les boutiques que je suis
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: query, name: limit, schema: { type: integer, default: 20 } }
+        - { in: query, name: offset, schema: { type: integer, default: 0 } }
+      responses:
+        "200": { description: Liste }
+
+  /follows/me/count:
+    get:
+      tags: [Follows]
+      summary: Nombre de boutiques suivies
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Compteur
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  count: { type: integer }
+
+  /follows/shop/{shopId}/followers:
+    get:
+      tags: [Follows]
+      summary: Liste les followers d'une boutique
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: shopId, required: true, schema: { type: integer } }
+        - { in: query, name: limit, schema: { type: integer, default: 20 } }
+        - { in: query, name: offset, schema: { type: integer, default: 0 } }
+      responses:
+        "200": { description: Liste }
+
+  /follows/shop/{shopId}/count:
+    get:
+      tags: [Follows]
+      summary: Nombre de followers d'une boutique
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: shopId, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Compteur }
+
+  /follows/shop/{shopId}/status:
+    get:
+      tags: [Follows]
+      summary: Est-ce que je suis la boutique ?
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: shopId, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Statut
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  following: { type: boolean }
+
+  /follows/shop/{shopId}:
+    post:
+      tags: [Follows]
+      summary: Toggle follow sur une boutique
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: shopId, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Toggle effectué
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  following: { type: boolean }
+
+  # ============================================================
+  # SHARE (Open Graph + liens)
+  # ============================================================
+  /share/posts/{id}/og:
+    get:
+      tags: [Share]
+      summary: Open Graph d'un post (public, pas d'auth)
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Métadonnées OG }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /share/users/{username}/og:
+    get:
+      tags: [Share]
+      summary: Open Graph d'un user (public)
+      parameters:
+        - { in: path, name: username, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Métadonnées OG }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /share/shops/{id}/og:
+    get:
+      tags: [Share]
+      summary: Open Graph d'une boutique (public)
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Métadonnées OG }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /share/posts/{id}/links:
+    get:
+      tags: [Share]
+      summary: Liens de partage d'un post (Twitter, Facebook, WhatsApp...)
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Liens de partage }
+
+  /share/users/{username}/links:
+    get:
+      tags: [Share]
+      summary: Liens de partage d'un user
+      parameters:
+        - { in: path, name: username, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Liens de partage }
+
+  /share/shops/{id}/links:
+    get:
+      tags: [Share]
+      summary: Liens de partage d'une boutique
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Liens de partage }
+
+        
+  # ============================================================
+  # SHOPS
+  # ============================================================
+  /shops/nearby:
+    get:
+      tags: [Shops]
+      summary: Liste les boutiques proches (Haversine)
+      parameters:
+        - { in: query, name: lat, required: true, schema: { type: number, minimum: -90, maximum: 90 } }
+        - { in: query, name: lng, required: true, schema: { type: number, minimum: -180, maximum: 180 } }
+        - { in: query, name: radius, schema: { type: number, default: 25, maximum: 500, description: "en km" } }
+        - { in: query, name: limit, schema: { type: integer, default: 20 } }
+        - { in: query, name: offset, schema: { type: integer, default: 0 } }
+      responses:
+        "200":
+          description: Liste triée par distance
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  radius_km: { type: number }
+                  center: { type: object }
+                  shops: { type: array, items: { type: object } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /shops:
+    get:
+      tags: [Shops]
+      summary: Liste toutes les boutiques (non masquées)
+      responses:
+        "200": { description: Liste }
+    post:
+      tags: [Shops]
+      summary: Crée une boutique (pro only)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, minLength: 2 }
+                description: { type: string }
+                logo_url: { type: string, format: uri }
+                banner_url: { type: string, format: uri }
+                address: { type: string }
+                city: { type: string }
+                postal_code: { type: string }
+                phone: { type: string }
+                latitude: { type: number }
+                longitude: { type: number }
+      responses:
+        "201": { description: Boutique créée }
+
+  /shops/owner/me:
+    get:
+      tags: [Shops]
+      summary: Liste mes boutiques (pro)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Liste }
+
+  /shops/{id}:
+    get:
+      tags: [Shops]
+      summary: Détail d'une boutique + owner + badges + rating
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Détail }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [Shops]
+      summary: Modifie une boutique (owner)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Modifiée }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    delete:
+      tags: [Shops]
+      summary: Supprime une boutique (owner)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "204": { description: Supprimée }
+
+  # ============================================================
+  # PRODUCTS
+  # ============================================================
+  /products:
+    get:
+      tags: [Products]
+      summary: Liste tous les produits
+      responses:
+        "200": { description: Liste }
+    post:
+      tags: [Products]
+      summary: Crée un produit (pro only)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [shop_id, name, price]
+              properties:
+                shop_id: { type: integer }
+                name: { type: string, minLength: 2 }
+                description: { type: string }
+                image_url: { type: string, format: uri }
+                location: { type: string }
+                stock: { type: integer, minimum: 0 }
+                price: { type: number, minimum: 0 }
+      responses:
+        "201": { description: Produit créé }
+
+  /products/shop/{shopId}:
+    get:
+      tags: [Products]
+      summary: Liste les produits d'une boutique
+      parameters:
+        - { in: path, name: shopId, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Liste }
+
+  /products/{id}:
+    get:
+      tags: [Products]
+      summary: Détail d'un produit + shop + owner + badges + rating
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Détail }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [Products]
+      summary: Modifie un produit (owner)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Modifié }
+    delete:
+      tags: [Products]
+      summary: Supprime un produit (owner)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "204": { description: Supprimé }
+
+  # ============================================================
+  # SEARCH
+  # ============================================================
+  /search/all:
+    get:
+      tags: [Search]
+      summary: Recherche globale (users + shops + products) avec geo optionnelle
+      parameters:
+        - { in: query, name: q, required: true, schema: { type: string, minLength: 1, maxLength: 100 } }
+        - { in: query, name: limit_per_type, schema: { type: integer, default: 5, maximum: 10 } }
+        - { in: query, name: lat, schema: { type: number } }
+        - { in: query, name: lng, schema: { type: number } }
+        - { in: query, name: radius, schema: { type: number, default: 25 } }
+      responses:
+        "200": { description: Résultats }
+
+  /search/users:
+    get:
+      tags: [Search]
+      summary: Recherche d'utilisateurs
+      parameters:
+        - { in: query, name: q, schema: { type: string, maxLength: 100 } }
+        - { in: query, name: role, schema: { type: string, enum: [particulier, professionnel] } }
+        - { in: query, name: city, schema: { type: string } }
+        - { in: query, name: sort, schema: { type: string, enum: [relevance, recent, alphabetical], default: relevance } }
+        - { in: query, name: limit, schema: { type: integer, default: 20 } }
+        - { in: query, name: offset, schema: { type: integer, default: 0 } }
+        - { in: query, name: lat, schema: { type: number } }
+        - { in: query, name: lng, schema: { type: number } }
+        - { in: query, name: radius, schema: { type: number, default: 25 } }
+      responses:
+        "200": { description: Résultats }
+
+  /search/shops:
+    get:
+      tags: [Search]
+      summary: Recherche de boutiques
+      parameters:
+        - { in: query, name: q, schema: { type: string } }
+        - { in: query, name: city, schema: { type: string } }
+        - { in: query, name: category_id, schema: { type: integer } }
+        - { in: query, name: sort, schema: { type: string, enum: [relevance, recent, rating, products_count], default: relevance } }
+        - { in: query, name: limit, schema: { type: integer, default: 20 } }
+        - { in: query, name: offset, schema: { type: integer, default: 0 } }
+        - { in: query, name: lat, schema: { type: number } }
+        - { in: query, name: lng, schema: { type: number } }
+        - { in: query, name: radius, schema: { type: number, default: 25 } }
+      responses:
+        "200": { description: Résultats }
+
+  /search/products:
+    get:
+      tags: [Search]
+      summary: Recherche de produits
+      parameters:
+        - { in: query, name: q, schema: { type: string } }
+        - { in: query, name: category_id, schema: { type: integer } }
+        - { in: query, name: shop_id, schema: { type: integer } }
+        - { in: query, name: city, schema: { type: string } }
+        - { in: query, name: min_price, schema: { type: number } }
+        - { in: query, name: max_price, schema: { type: number } }
+        - { in: query, name: in_stock, schema: { type: boolean } }
+        - { in: query, name: min_rating, schema: { type: number, minimum: 1, maximum: 5 } }
+        - { in: query, name: sort, schema: { type: string, enum: [relevance, recent, price_asc, price_desc, rating], default: relevance } }
+        - { in: query, name: limit, schema: { type: integer, default: 20 } }
+        - { in: query, name: offset, schema: { type: integer, default: 0 } }
+        - { in: query, name: lat, schema: { type: number } }
+        - { in: query, name: lng, schema: { type: number } }
+        - { in: query, name: radius, schema: { type: number, default: 25 } }
+      responses:
+        "200": { description: Résultats }
+
+  /search/suggest:
+    get:
+      tags: [Search]
+      summary: Autocomplete (min 2 car.)
+      parameters:
+        - { in: query, name: q, required: true, schema: { type: string, minLength: 2, maxLength: 50 } }
+        - { in: query, name: limit, schema: { type: integer, default: 5, maximum: 10 } }
+      responses:
+        "200": { description: Suggestions }
+
+  # ============================================================
+  # GEO
+  # ============================================================
+  /geo/geocode:
+    post:
+      tags: [Geo]
+      summary: Géocode une adresse (API adresse.data.gouv.fr)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [address]
+              properties:
+                address: { type: string, minLength: 5, maxLength: 255 }
+      responses:
+        "200":
+          description: Coordonnées + label
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  latitude: { type: number }
+                  longitude: { type: number }
+                  label: { type: string }
+                  city: { type: string }
+                  postal_code: { type: string }
+                  score: { type: number }
+        "404": { description: Adresse introuvable }
+        "502": { description: API gouvernementale injoignable }
+
+  # ============================================================
+  # EVENTS
+  # ============================================================
+  /events:
+    get:
+      tags: [Events]
+      summary: Liste les événements publiés (auth optionnelle)
+      parameters:
+        - { in: query, name: type, schema: { type: string, enum: [all, marche, atelier, salon, porte_ouverte, degustation, autre], default: all } }
+        - { in: query, name: city, schema: { type: string } }
+        - { in: query, name: from, schema: { type: string, format: date-time } }
+        - { in: query, name: to, schema: { type: string, format: date-time } }
+        - { in: query, name: upcoming, schema: { type: boolean, default: true } }
+        - { in: query, name: limit, schema: { type: integer, default: 20 } }
+        - { in: query, name: offset, schema: { type: integer, default: 0 } }
+      responses:
+        "200": { description: Liste }
+    post:
+      tags: [Events]
+      summary: Crée un événement (pro only)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, type, start_at]
+              properties:
+                title: { type: string, minLength: 2, maxLength: 255 }
+                description: { type: string, nullable: true }
+                cover_url: { type: string, format: uri, nullable: true }
+                type: { type: string, enum: [marche, atelier, salon, porte_ouverte, degustation, autre] }
+                start_at: { type: string, format: date-time }
+                end_at: { type: string, format: date-time, nullable: true }
+                shop_id: { type: integer, nullable: true }
+                address: { type: string, nullable: true }
+                city: { type: string, nullable: true }
+                postal_code: { type: string, nullable: true }
+                latitude: { type: number, nullable: true }
+                longitude: { type: number, nullable: true }
+                capacity: { type: integer, nullable: true }
+                is_free: { type: boolean, default: true }
+                price: { type: number, nullable: true }
+                status: { type: string, enum: [draft, published], default: published }
+      responses:
+        "201": { description: Événement créé }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /events/nearby:
+    get:
+      tags: [Events]
+      summary: Événements proches (Haversine)
+      parameters:
+        - { in: query, name: lat, required: true, schema: { type: number } }
+        - { in: query, name: lng, required: true, schema: { type: number } }
+        - { in: query, name: radius, schema: { type: number, default: 25, maximum: 500 } }
+        - { in: query, name: upcoming, schema: { type: boolean, default: true } }
+        - { in: query, name: limit, schema: { type: integer, default: 20 } }
+        - { in: query, name: offset, schema: { type: integer, default: 0 } }
+      responses:
+        "200": { description: Liste triée par distance }
+
+  /events/me:
+    get:
+      tags: [Events]
+      summary: Liste mes événements (organisateur)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Liste }
+
+  /events/{id}:
+    get:
+      tags: [Events]
+      summary: Détail d'un événement (auth optionnelle)
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Détail }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [Events]
+      summary: Modifie un événement (organisateur)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Modifié }
+    delete:
+      tags: [Events]
+      summary: Supprime un événement (organisateur)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "204": { description: Supprimé }
+
+  /events/{id}/registrations:
+    get:
+      tags: [Events]
+      summary: Liste les inscrits (organisateur uniquement)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Liste }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /events/{id}/register:
+    post:
+      tags: [Events]
+      summary: S'inscrire à un événement (waitlist si complet)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "201":
+          description: Inscription créée
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  status: { type: string, enum: [registered, waitlist] }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "409": { $ref: "#/components/responses/Conflict" }
+    delete:
+      tags: [Events]
+      summary: Se désinscrire d'un événement
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Désinscription OK }
+
+  /events/{id}/cancel:
+    put:
+      tags: [Events]
+      summary: Annuler un événement (organisateur) + notif inscrits
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string, maxLength: 500, nullable: true }
+      responses:
+        "200": { description: Événement annulé }
+
+  # ============================================================
+  # ARTICLES (blog)
+  # ============================================================
+  /articles:
+    get:
+      tags: [Articles]
+      summary: Liste les articles publiés
+      parameters:
+        - { in: query, name: q, schema: { type: string } }
+        - { in: query, name: category, schema: { type: string, enum: [all, recette, conseil, portrait, actualite, autre], default: all } }
+        - { in: query, name: tag, schema: { type: string } }
+        - { in: query, name: author_id, schema: { type: integer } }
+        - { in: query, name: sort, schema: { type: string, enum: [recent, popular, views], default: recent } }
+        - { in: query, name: limit, schema: { type: integer, default: 20 } }
+        - { in: query, name: offset, schema: { type: integer, default: 0 } }
+      responses:
+        "200": { description: Liste }
+    post:
+      tags: [Articles]
+      summary: Crée un article
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, content, category]
+              properties:
+                title: { type: string, minLength: 3 }
+                excerpt: { type: string, maxLength: 500, nullable: true }
+                content: { type: string, minLength: 20 }
+                cover_url: { type: string, format: uri, nullable: true }
+                tags:
+                  type: array
+                  maxItems: 10
+                  items: { type: string }
+                category: { type: string, enum: [recette, conseil, portrait, actualite, autre] }
+                status: { type: string, enum: [draft, published], default: published }
+      responses:
+        "201": { description: Article créé }
+
+  /articles/me:
+    get:
+      tags: [Articles]
+      summary: Liste mes articles (inclut drafts)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Liste }
+
+  /articles/{slug}:
+    get:
+      tags: [Articles]
+      summary: Détail par slug (+ incrémente views)
+      parameters:
+        - { in: path, name: slug, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Article }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /articles/{id}:
+    put:
+      tags: [Articles]
+      summary: Modifie un article (auteur)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Modifié }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    delete:
+      tags: [Articles]
+      summary: Supprime un article (auteur)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "204": { description: Supprimé }
+
+  /articles/{id}/like:
+    post:
+      tags: [Articles]
+      summary: Toggle like sur un article
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Toggle effectué }
+
+  # ============================================================
+  # CART (panier)
+  # ============================================================
+  /cart:
+    get:
+      tags: [Cart]
+      summary: Mon panier (groupé par vendeur)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Panier
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  items: { type: array, items: { type: object } }
+                  items_count: { type: integer }
+                  subtotal: { type: number }
+                  by_seller: { type: array, items: { type: object } }
+    delete:
+      tags: [Cart]
+      summary: Vide tout le panier
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Vidé }
+
+  /cart/items:
+    post:
+      tags: [Cart]
+      summary: Ajoute un produit au panier (cumul si déjà présent)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [product_id]
+              properties:
+                product_id: { type: integer }
+                quantity: { type: integer, default: 1, minimum: 1, maximum: 99 }
+      responses:
+        "201": { description: Ajouté }
+        "400": { description: Stock insuffisant }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /cart/items/{productId}:
+    put:
+      tags: [Cart]
+      summary: Modifie la quantité d'un item
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: productId, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [quantity]
+              properties:
+                quantity: { type: integer, min: 1, max: 99 }
+      responses:
+        "200": { description: Modifié }
+        "404": { description: "Produit pas dans le panier" }
+    delete:
+      tags: [Cart]
+      summary: Retire un produit du panier
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: productId, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Retiré }
+
+  /cart/checkout:
+    post:
+      tags: [Cart]
+      summary: Transforme le panier en 1 commande par vendeur (avec promo optionnelle)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [delivery_method]
+              properties:
+                delivery_method: { type: string, enum: [pickup, delivery, shipping] }
+                delivery_address: { type: string, nullable: true }
+                promo_code: { type: string, nullable: true }
+      responses:
+        "201":
+          description: Commandes créées
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  orders_count: { type: integer }
+                  orders: { type: array, items: { type: object } }
+                  message: { type: string }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { description: "Boutique masquée ou en vacances" }
+
+  # ============================================================
+  # WISHLIST
+  # ============================================================
+  /wishlist:
+    get:
+      tags: [Wishlist]
+      summary: Liste mes favoris (enrichis)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: query, name: limit, schema: { type: integer, default: 50 } }
+        - { in: query, name: offset, schema: { type: integer, default: 0 } }
+      responses:
+        "200": { description: Liste }
+
+  /wishlist/count:
+    get:
+      tags: [Wishlist]
+      summary: Nombre de favoris
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Compteur
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  count: { type: integer }
+
+  /wishlist/product-ids:
+    get:
+      tags: [Wishlist]
+      summary: IDs des produits favoris (pour afficher les cœurs)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Tableau d'IDs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  product_ids: { type: array, items: { type: integer } }
+
+  /wishlist/check/{productId}:
+    get:
+      tags: [Wishlist]
+      summary: Vérifie si un produit est en favori
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: productId, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Statut
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  in_wishlist: { type: boolean }
+
+  /wishlist/{productId}:
+    post:
+      tags: [Wishlist]
+      summary: Toggle un favori
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: productId, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Toggle effectué
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  in_wishlist: { type: boolean }
+
+  # ============================================================
+  # PROMO
+  # ============================================================
+  /promo/validate:
+    post:
+      tags: [Promo]
+      summary: Valide un code promo (checks complets, sans l'utiliser)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, subtotal]
+              properties:
+                code: { type: string, minLength: 3 }
+                subtotal: { type: number, minimum: 0 }
+                product_ids:
+                  type: array
+                  items: { type: integer }
+                  description: "Optionnel : vérifier que le code seller s'applique"
+      responses:
+        "200":
+          description: Code valide
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  valid: { type: boolean }
+                  code: { type: string }
+                  type: { type: string, enum: [percent, fixed] }
+                  value: { type: number }
+                  discount_preview: { type: number }
+                  new_subtotal: { type: number }
+        "400": { description: Code invalide/expiré/épuisé }
+        "404": { description: Code inexistant }
+
+  /admin/promo:
+    get:
+      tags: [Promo]
+      summary: (Admin) Liste tous les codes (plateforme + sellers)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: query, name: active_only, schema: { type: boolean, default: false } }
+        - { in: query, name: limit, schema: { type: integer, default: 50 } }
+        - { in: query, name: offset, schema: { type: integer, default: 0 } }
+      responses:
+        "200": { description: Liste }
+    post:
+      tags: [Promo]
+      summary: (Admin) Crée un code plateforme (+ notif users si notify_users=true)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, type, value]
+              properties:
+                code: { type: string, pattern: "^[A-Z0-9_-]+$" }
+                description: { type: string, nullable: true }
+                type: { type: string, enum: [percent, fixed] }
+                value: { type: number }
+                min_amount: { type: number, nullable: true }
+                max_uses: { type: integer, nullable: true }
+                max_uses_per_user: { type: integer, nullable: true }
+                valid_from: { type: string, format: date-time, nullable: true }
+                valid_until: { type: string, format: date-time, nullable: true }
+                is_active: { type: boolean, default: true }
+                notify_users: { type: boolean, default: false }
+      responses:
+        "201": { description: Code créé }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /admin/promo/{id}:
+    put:
+      tags: [Promo]
+      summary: (Admin) Modifie un code
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Modifié }
+    delete:
+      tags: [Promo]
+      summary: (Admin) Supprime un code
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "204": { description: Supprimé }
+
+  /promo/my:
+    get:
+      tags: [Promo]
+      summary: Liste mes codes promo (pro)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: query, name: active_only, schema: { type: boolean, default: false } }
+        - { in: query, name: limit, schema: { type: integer, default: 50 } }
+        - { in: query, name: offset, schema: { type: integer, default: 0 } }
+      responses:
+        "200": { description: Liste }
+    post:
+      tags: [Promo]
+      summary: Crée un code promo pour mes boutiques (pro)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, type, value]
+              properties:
+                code: { type: string, pattern: "^[A-Z0-9_-]+$" }
+                description: { type: string, nullable: true }
+                type: { type: string, enum: [percent, fixed] }
+                value: { type: number }
+                min_amount: { type: number, nullable: true }
+                max_uses: { type: integer, nullable: true }
+                max_uses_per_user: { type: integer, nullable: true }
+                valid_from: { type: string, format: date-time, nullable: true }
+                valid_until: { type: string, format: date-time, nullable: true }
+                is_active: { type: boolean, default: true }
+      responses:
+        "201": { description: Code créé }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /promo/my/{id}:
+    put:
+      tags: [Promo]
+      summary: Modifie un de mes codes (pro)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Modifié }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    delete:
+      tags: [Promo]
+      summary: Supprime un de mes codes (pro)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "204": { description: Supprimé }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  # ============================================================
+  # CATEGORIES
+  # ============================================================
+  /categories:
+    get:
+      tags: [Categories]
+      summary: Liste toutes les catégories (public)
+      parameters:
+        - { in: query, name: q, schema: { type: string } }
+        - { in: query, name: limit, schema: { type: integer, default: 100 } }
+        - { in: query, name: offset, schema: { type: integer, default: 0 } }
+      responses:
+        "200": { description: Liste }
+
+  /categories/slug/{slug}:
+    get:
+      tags: [Categories]
+      summary: Récupère une catégorie par slug
+      parameters:
+        - { in: path, name: slug, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Catégorie }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /categories/{id}:
+    get:
+      tags: [Categories]
+      summary: Récupère une catégorie par ID (+ compteur de shops)
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Catégorie }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/categories:
+    post:
+      tags: [Categories]
+      summary: (Admin) Crée une catégorie
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, slug]
+              properties:
+                name: { type: string, minLength: 2, maxLength: 100 }
+                slug: { type: string, pattern: "^[a-z0-9-]+$" }
+                icon: { type: string, nullable: true }
+                image_url: { type: string, format: uri, nullable: true }
+      responses:
+        "201": { description: Catégorie créée }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /admin/categories/{id}:
+    put:
+      tags: [Categories]
+      summary: (Admin) Modifie une catégorie
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Modifiée }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [Categories]
+      summary: (Admin) Supprime une catégorie (impossible si shops l'utilisent)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "204": { description: Supprimée }
+        "400": { description: Catégorie utilisée par une boutique }
+
+  # ============================================================
+  # KYC
+  # ============================================================
+  /kyc/request:
+    post:
+      tags: [KYC]
+      summary: Soumettre une demande KYC (pro only)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, siret, documents]
+              properties:
+                type: { type: string, enum: [agriculteur, artisan, createur, autre] }
+                siret: { type: string, pattern: "^\\d{14}$" }
+                documents:
+                  type: array
+                  minItems: 1
+                  maxItems: 5
+                  items: { type: string, format: uri }
+      responses:
+        "201": { description: Demande créée }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { description: "Demande déjà en cours" }
+
+  /kyc/me:
+    get:
+      tags: [KYC]
+      summary: Ma dernière demande KYC
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Demande ou null
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  request: { type: object, nullable: true }
+    delete:
+      tags: [KYC]
+      summary: Annule ma demande KYC pending
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Annulée }
+        "404": { description: "Aucune demande en cours" }
+
+  /admin/kyc/requests:
+    get:
+      tags: [KYC]
+      summary: (Admin) Liste les demandes KYC
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: query, name: status, schema: { type: string, enum: [all, pending, approved, rejected], default: pending } }
+        - { in: query, name: type, schema: { type: string, enum: [all, agriculteur, artisan, createur, autre], default: all } }
+        - { in: query, name: limit, schema: { type: integer, default: 20 } }
+        - { in: query, name: offset, schema: { type: integer, default: 0 } }
+      responses:
+        "200": { description: Liste }
+
+  /admin/kyc/stats:
+    get:
+      tags: [KYC]
+      summary: (Admin) Stats KYC (pending / approved / rejected)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Stats }
+
+  /admin/kyc/requests/{id}:
+    get:
+      tags: [KYC]
+      summary: (Admin) Détail d'une demande
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Détail }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/kyc/requests/{id}/approve:
+    put:
+      tags: [KYC]
+      summary: (Admin) Approuve + attribue badges (verified + type)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Approuvé }
+        "409": { description: "Déjà traité" }
+
+  /admin/kyc/requests/{id}/reject:
+    put:
+      tags: [KYC]
+      summary: (Admin) Rejette avec motif
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 10, maxLength: 1000 }
+      responses:
+        "200": { description: Rejeté }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  # ============================================================
+  # MODERATION (signalements)
+  # ============================================================
+  /reports:
+    post:
+      tags: [Moderation]
+      summary: Signaler un contenu (post, review, user...)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [target_type, target_id, reason]
+              properties:
+                target_type: { type: string, enum: [post, comment, review, product, shop, user, message] }
+                target_id: { type: integer }
+                reason: { type: string, enum: [spam, harassment, hate_speech, violence, copyright, fake, other] }
+                description: { type: string, maxLength: 1000, nullable: true }
+      responses:
+        "201": { description: Signalement créé }
+        "400": { description: Auto-signalement interdit }
+        "404": { description: Cible inexistante }
+        "409": { description: Doublon }
+
+  /admin/moderation/reports:
+    get:
+      tags: [Moderation]
+      summary: (Admin) Liste les signalements
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: query, name: status, schema: { type: string, enum: [all, pending, resolved, dismissed], default: pending } }
+        - { in: query, name: target_type, schema: { type: string } }
+        - { in: query, name: limit, schema: { type: integer, default: 20 } }
+        - { in: query, name: offset, schema: { type: integer, default: 0 } }
+      responses:
+        "200": { description: Liste }
+
+  /admin/moderation/reports/stats:
+    get:
+      tags: [Moderation]
+      summary: (Admin) Stats signalements
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Stats }
+
+  /admin/moderation/reports/{id}:
+    get:
+      tags: [Moderation]
+      summary: (Admin) Détail d'un signalement
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Détail }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/moderation/reports/{id}/resolve:
+    put:
+      tags: [Moderation]
+      summary: (Admin) Résout + supprime le contenu (par défaut)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                admin_note: { type: string, nullable: true }
+                delete_content: { type: boolean, default: true }
+      responses:
+        "200": { description: Résolu }
+        "409": { description: "Déjà traité" }
+
+  /admin/moderation/reports/{id}/dismiss:
+    put:
+      tags: [Moderation]
+      summary: (Admin) Rejette le signalement
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [admin_note]
+              properties:
+                admin_note: { type: string, minLength: 10, maxLength: 1000 }
+      responses:
+        "200": { description: Rejeté }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  # ============================================================
+  # DASHBOARD
+  # ============================================================
+  /dashboard/buyer/summary:
+    get:
+      tags: [Dashboard]
+      summary: Résumé buyer (orders, dépenses, wishlist, cart, events)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Résumé }
+  /dashboard/buyer/stats:
+    get:
+      tags: [Dashboard]
+      summary: Stats buyer
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Stats }
+  /dashboard/buyer/recent-orders:
+    get:
+      tags: [Dashboard]
+      summary: 5 dernières commandes
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Liste }
+  /dashboard/buyer/recent-refunds:
+    get:
+      tags: [Dashboard]
+      summary: 5 dernières demandes de remboursement
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Liste }
+  /dashboard/buyer/invoices:
+    get:
+      tags: [Dashboard]
+      summary: Liste mes factures (Cloudinary)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Liste }
+  /dashboard/buyer/invoices/{orderId}/resend:
+    post:
+      tags: [Dashboard]
+      summary: Renvoyer une facture par email
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: orderId, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Renvoyée }
+  /dashboard/buyer/spending-chart:
+    get:
+      tags: [Dashboard]
+      summary: Dépenses sur 12 mois
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: query, name: months, schema: { type: integer, default: 12, maximum: 24 } }
+      responses:
+        "200": { description: Données graphique }
+
+  /dashboard/seller/summary:
+    get:
+      tags: [Dashboard]
+      summary: Résumé seller (to_treat, CA, promo, events, articles)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Résumé }
+  /dashboard/seller/stats:
+    get:
+      tags: [Dashboard]
+      summary: Stats seller (CA + rating + products_count)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Stats }
+  /dashboard/seller/orders-breakdown:
+    get:
+      tags: [Dashboard]
+      summary: Répartition commandes par statut
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Breakdown }
+  /dashboard/seller/revenue-chart:
+    get:
+      tags: [Dashboard]
+      summary: CA sur N mois
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: query, name: months, schema: { type: integer, default: 12 } }
+      responses:
+        "200": { description: Données graphique }
+  /dashboard/seller/top-products:
+    get:
+      tags: [Dashboard]
+      summary: Top 5 produits vendus
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Liste }
+  /dashboard/seller/ratings:
+    get:
+      tags: [Dashboard]
+      summary: Note globale + notes par produit
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Notes }
+  /dashboard/seller/recent-reviews:
+    get:
+      tags: [Dashboard]
+      summary: 5 derniers avis reçus
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Liste }
+  /dashboard/seller/recent-orders:
+    get:
+      tags: [Dashboard]
+      summary: Commandes récentes à traiter
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Liste }
+  /dashboard/seller/verification:
+    get:
+      tags: [Dashboard]
+      summary: Statut KYC + badges + dernière demande
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Statut }
+
+  /dashboard/admin/summary:
+    get:
+      tags: [Dashboard]
+      summary: (Admin) Résumé complet (to_treat, stats, revenue, promo, events, backup, recent)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Résumé }
+  /dashboard/admin/stats:
+    get:
+      tags: [Dashboard]
+      summary: (Admin) Stats globales
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Stats }
+  /dashboard/admin/recent-users:
+    get:
+      tags: [Dashboard]
+      summary: (Admin) 50 derniers inscrits
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Liste }
+  /dashboard/admin/recent-orders:
+    get:
+      tags: [Dashboard]
+      summary: (Admin) 50 dernières commandes
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Liste }
+  /dashboard/admin/revenue-chart:
+    get:
+      tags: [Dashboard]
+      summary: (Admin) CA + commissions sur N mois
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: query, name: months, schema: { type: integer, default: 12 } }
+      responses:
+        "200": { description: Données graphique }
+  /dashboard/admin/moderation:
+    get:
+      tags: [Dashboard]
+      summary: (Admin) Avis signalés
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Liste }
+  /dashboard/admin/pending-refunds:
+    get:
+      tags: [Dashboard]
+      summary: (Admin) Remboursements en attente
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Liste }
+  /dashboard/admin/kyc-summary:
+    get:
+      tags: [Dashboard]
+      summary: (Admin) Résumé KYC
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Résumé }
+
+  # ============================================================
+  # AUDIT
+  # ============================================================
+  /admin/audit/logs:
+    get:
+      tags: [Audit]
+      summary: (Admin) Liste les audit logs (filtrable)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: query, name: admin_id, schema: { type: integer } }
+        - { in: query, name: action, schema: { type: string, default: all } }
+        - { in: query, name: target_type, schema: { type: string, default: all } }
+        - { in: query, name: target_id, schema: { type: integer } }
+        - { in: query, name: from, schema: { type: string, format: date-time } }
+        - { in: query, name: to, schema: { type: string, format: date-time } }
+        - { in: query, name: limit, schema: { type: integer, default: 50 } }
+        - { in: query, name: offset, schema: { type: integer, default: 0 } }
+      responses:
+        "200": { description: Liste }
+
+  /admin/audit/stats:
+    get:
+      tags: [Audit]
+      summary: (Admin) Stats audit (top actions + top admins)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Stats }
+
+  # ============================================================
+  # BACKUP
+  # ============================================================
+  /admin/backup/run:
+    post:
+      tags: [Backup]
+      summary: (Admin) Déclenche un backup DB manuel (pg_dump)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Backup créé
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  filename: { type: string }
+                  path: { type: string }
+                  size_bytes: { type: integer }
+                  duration_ms: { type: integer }
+                  deleted: { type: integer, description: "Anciens backups supprimés (rotation)" }
+        "500": { description: pg_dump introuvable ou a échoué }
+
+  /admin/backup/list:
+    get:
+      tags: [Backup]
+      summary: (Admin) Liste les backups existants
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Liste
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  count: { type: integer }
+                  backups: { type: array, items: { type: object } }
+
+  /admin/backup/stats:
+    get:
+      tags: [Backup]
+      summary: (Admin) Stats backup (count, taille totale, dernier backup)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Stats }
