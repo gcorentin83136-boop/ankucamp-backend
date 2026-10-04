@@ -1,5 +1,8 @@
-import { Request, Response, NextFunction } from "express";
+﻿import { Request, Response, NextFunction } from "express";
+import { eq } from "drizzle-orm";
 import { verifyToken } from "../security/jwt";
+import { db } from "../db";
+import { users } from "../db/schema";
 
 export interface AuthRequest extends Request {
   user?: Express.User;
@@ -7,9 +10,15 @@ export interface AuthRequest extends Request {
 
 /**
  * Middleware d'authentification obligatoire.
- * Rejette si token manquant ou invalide.
+ *
+ * ✅ Vérifie le JWT
+ * ✅ Vérifie que le compte existe toujours en BDD
+ * ✅ Vérifie que le compte n'est pas désactivé (email_verified === -1)
+ *
+ * → Un compte désactivé est immédiatement rejeté (401),
+ *   même si son JWT est encore valide.
  */
-export function authMiddleware(
+export async function authMiddleware(
   req: AuthRequest,
   res: Response,
   next: NextFunction
@@ -22,12 +31,42 @@ export function authMiddleware(
 
   const token = header.split(" ")[1];
 
+  // 1. Vérifier le JWT
+  let payload: any;
   try {
-    const payload = verifyToken(token);
-    req.user = payload;
-    next();
+    payload = verifyToken(token);
   } catch {
     return res.status(401).json({ success: false, message: "Token invalide" });
+  }
+
+  // 2. Vérifier l'état du compte en BDD
+  try {
+    const [user] = await db
+      .select({ id: users.id, email_verified: users.email_verified })
+      .from(users)
+      .where(eq(users.id, payload.id))
+      .limit(1);
+
+    if (!user) {
+      return res
+        .status(401)
+        .json({ success: false, message: "Compte introuvable" });
+    }
+
+    if (user.email_verified === -1) {
+      return res.status(401).json({
+        success: false,
+        message: "Compte désactivé. Reconnecte-toi pour le réactiver.",
+      });
+    }
+
+    req.user = payload;
+    next();
+  } catch (err) {
+    console.error("❌ Erreur authMiddleware:", err);
+    return res
+      .status(500)
+      .json({ success: false, message: "Erreur serveur" });
   }
 }
 
@@ -35,9 +74,6 @@ export function authMiddleware(
  * Middleware d'authentification OPTIONNELLE.
  * - Si token valide → req.user est rempli
  * - Si token manquant ou invalide → on continue sans req.user
- *
- * Utile pour les routes publiques qui ont un comportement enrichi
- * si l'utilisateur est authentifié (ex: profil privé visible par son propriétaire).
  */
 export function authOptionalMiddleware(
   req: AuthRequest,

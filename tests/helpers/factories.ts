@@ -51,6 +51,8 @@ export async function createUser(options: CreateUserOptions) {
       city,
       postal_code,
       provider: "local",
+      // En test : email deja verifie (pas d'envoi reel possible)
+      email_verified: 1,
     })
     .returning();
 

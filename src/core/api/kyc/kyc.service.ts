@@ -182,3 +182,52 @@ export async function getKycStats() {
   }
   return stats;
 }
+// ============================================================
+// BECOME PRO (conversion particulier → professionnel)
+// Utilisé quand un user Google veut passer Pro
+// ============================================================
+export async function becomeProAndCreateKyc(
+  userId: number,
+  input: CreateKycInput
+) {
+  const [user] = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  if (!user) throw new AppError("Utilisateur introuvable", 404);
+  if (user.role === "professionnel") {
+    throw new AppError("Tu es déjà professionnel", 400);
+  }
+
+  const existing = await getMyActiveKycRequest(userId);
+  if (existing) {
+    throw new AppError("Vous avez déjà une demande en cours", 409);
+  }
+
+  const siretResult = await verifySiret(input.siret);
+  if (!siretResult.valid) {
+    throw new AppError(siretResult.error ?? "SIRET invalide", 400);
+  }
+
+  await db
+    .update(users)
+    .set({ role: "professionnel", verification_status: "pending" })
+    .where(eq(users.id, userId));
+
+  const [created] = await db
+    .insert(kycRequests)
+    .values({
+      user_id: userId,
+      status: "pending",
+      type: input.type,
+      siret: input.siret,
+      siret_verified: 1,
+      siret_data: JSON.stringify(siretResult.etablissement ?? {}),
+      documents: JSON.stringify(input.documents),
+    })
+    .returning();
+
+  return { kyc: created, newRole: "professionnel" as const };
+}

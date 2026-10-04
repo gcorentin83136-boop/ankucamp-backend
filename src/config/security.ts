@@ -1,7 +1,8 @@
-import rateLimit, { ipKeyGenerator } from "express-rate-limit";
+﻿import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { env } from "./env";
 
 const isTest = env.NODE_ENV === "test";
+const isDev = env.NODE_ENV === "development";
 
 // ============================================================
 // HELPERS
@@ -65,11 +66,14 @@ function createConditionalLimiter(opts: {
 // ============================================================
 
 /**
- * Rate limit global : 100 requêtes / 15 min par IP.
+ * Rate limit global.
+ * - dev  : 10 000 requêtes / 15 min (pour ne pas gêner le développement)
+ * - prod : 100 requêtes / 15 min par IP
+ * - test : 10 000 (les tests pilotent via header)
  */
 export const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: isTest ? 10_000 : 100,
+  limit: isTest || isDev ? 10_000 : 100,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
@@ -79,11 +83,14 @@ export const globalLimiter = rateLimit({
 });
 
 /**
- * Rate limit strict pour l'auth : 5 tentatives ÉCHOUÉES / 15 min.
+ * Rate limit strict pour l'auth.
+ * - dev  : 100 tentatives / 15 min (pour ne pas se bloquer en testant)
+ * - prod : 5 tentatives ÉCHOUÉES / 15 min
+ * - test : 10 000
  */
 export const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: isTest ? 10_000 : 5,
+  limit: isTest || isDev ? 100 : 5,
   standardHeaders: true,
   legacyHeaders: false,
   skipSuccessfulRequests: !isTest,

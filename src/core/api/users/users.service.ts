@@ -1,4 +1,4 @@
-import { eq, and, or, ilike, desc, sql } from "drizzle-orm";
+﻿import { eq, and, or, ilike, desc, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { users, posts, friendships, reviews } from "../../db/schema";
 import { AppError } from "../../errors/AppError";
@@ -31,6 +31,7 @@ const publicColumns = {
   provider: users.provider,
   role: users.role,
   email_verified: users.email_verified,
+  verification_status: users.verification_status,
   created_at: users.created_at,
 };
 
@@ -59,7 +60,7 @@ export async function getUserByUsername(username: string) {
 }
 
 /**
- * Liste paginée des users.
+ * Liste paginÃ©e des users.
  */
 export async function getAllUsers(limit = 50, offset = 0) {
   return db
@@ -71,7 +72,7 @@ export async function getAllUsers(limit = 50, offset = 0) {
 }
 
 /**
- * Recherche des utilisateurs par nom/prénom/username.
+ * Recherche des utilisateurs par nom/prÃ©nom/username.
  */
 export async function searchUsers(query: ListUsersQuery) {
   const { limit, offset, search } = query;
@@ -103,11 +104,11 @@ export async function searchUsers(query: ListUsersQuery) {
 }
 
 // ============================================================
-// MISE À JOUR
+// MISE Ã€ JOUR
 // ============================================================
 
 export async function updateUser(id: number, data: UpdateProfileInput) {
-  // Nettoyage : on enlève les undefined et on gère le website vide
+  // Nettoyage : on enlÃ¨ve les undefined et on gÃ¨re le website vide
   const cleanData: any = {};
   for (const [key, value] of Object.entries(data)) {
     if (value === undefined) continue;
@@ -120,10 +121,10 @@ export async function updateUser(id: number, data: UpdateProfileInput) {
 
   const hasData = Object.keys(cleanData).length > 0;
   if (!hasData) {
-    throw new AppError("Aucune donnée à mettre à jour", 400);
+    throw new AppError("Aucune donnÃ©e Ã  mettre Ã  jour", 400);
   }
 
-  // Vérif unicité email si changé
+  // VÃ©rif unicitÃ© email si changÃ©
   if (cleanData.email) {
     const existing = await db
       .select({ id: users.id })
@@ -132,11 +133,11 @@ export async function updateUser(id: number, data: UpdateProfileInput) {
       .limit(1);
 
     if (existing.length > 0 && existing[0].id !== id) {
-      throw new AppError("Cet email est déjà utilisé", 400);
+      throw new AppError("Cet email est dÃ©jÃ  utilisÃ©", 400);
     }
   }
 
-  // Vérif unicité username si changé
+  // VÃ©rif unicitÃ© username si changÃ©
   if (cleanData.username) {
     const existing = await db
       .select({ id: users.id })
@@ -145,7 +146,7 @@ export async function updateUser(id: number, data: UpdateProfileInput) {
       .limit(1);
 
     if (existing.length > 0 && existing[0].id !== id) {
-      throw new AppError("Ce username est déjà utilisé", 400);
+      throw new AppError("Ce username est dÃ©jÃ  utilisÃ©", 400);
     }
   }
 
@@ -180,7 +181,7 @@ export async function updatePrivacy(id: number, isPrivate: boolean) {
 // ============================================================
 
 /**
- * Stats publiques d'un profil : nb de posts, amis, avis reçus, note moyenne.
+ * Stats publiques d'un profil : nb de posts, amis, avis reÃ§us, note moyenne.
  */
 export async function getUserStats(userId: number) {
   // Nombre de posts
@@ -189,7 +190,7 @@ export async function getUserStats(userId: number) {
     .from(posts)
     .where(eq(posts.author_id, userId));
 
-  // Nombre d'amis acceptés
+  // Nombre d'amis acceptÃ©s
   const [friendsCount] = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(friendships)
@@ -203,7 +204,7 @@ export async function getUserStats(userId: number) {
       )
     );
 
-  // Nombre d'avis reçus (en tant que vendeur)
+  // Nombre d'avis reÃ§us (en tant que vendeur)
   const [reviewsCount] = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(reviews)

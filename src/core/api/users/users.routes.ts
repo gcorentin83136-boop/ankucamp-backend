@@ -1,4 +1,4 @@
-import { Router } from "express";
+﻿import { Router } from "express";
 import {
   authMiddleware,
   authOptionalMiddleware,
@@ -13,6 +13,7 @@ import {
   getByUsername,
   getStats,
   getFriends,
+  becomePro,
 } from "./users.controller";
 
 const router = Router();
@@ -24,6 +25,7 @@ const router = Router();
 router.get("/me", authMiddleware, asyncHandler(getMe));
 router.put("/me", authMiddleware, asyncHandler(updateMe));
 router.put("/me/privacy", authMiddleware, asyncHandler(putPrivacy));
+router.post("/me/become-pro", authMiddleware, asyncHandler(becomePro));
 
 // ============================================================
 // LECTURE PUBLIQUE
@@ -31,16 +33,16 @@ router.put("/me/privacy", authMiddleware, asyncHandler(putPrivacy));
 
 router.get("/", asyncHandler(getAll));
 
-// ⚠️ Route spécifique AVANT /:id
+// âš ï¸ Route spÃ©cifique AVANT /:id
 router.get("/u/:username", asyncHandler(getByUsername));
 
 // Stats + amis d'un user
 router.get("/:id/stats", asyncHandler(getStats));
 
-// Amis : auth optionnelle (profil privé → seul le propriétaire voit)
+// Amis : auth optionnelle (profil privÃ© â†’ seul le propriÃ©taire voit)
 router.get("/:id/friends", authOptionalMiddleware, asyncHandler(getFriends));
 
-// Route dynamique générique EN DERNIER
+// Route dynamique gÃ©nÃ©rique EN DERNIER
 router.get("/:id", asyncHandler(getOne));
 
 export default router;

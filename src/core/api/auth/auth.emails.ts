@@ -9,7 +9,7 @@ import { env } from "../../../config/env";
 
 const FRONTEND_URL =
   env.NODE_ENV === "development"
-    ? "http://localhost:3000"
+    ? "http://localhost:5173"
     : "https://ankucamp.com";
 
 const ACTIVATION_TOKEN_TTL = 24 * 60 * 60 * 1000; // 24h

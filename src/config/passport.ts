@@ -1,4 +1,4 @@
-import passport from "passport";
+﻿import passport from "passport";
 import { Strategy as GoogleStrategy, Profile } from "passport-google-oauth20";
 import { eq } from "drizzle-orm";
 import { db } from "../core/db";
@@ -51,21 +51,42 @@ passport.use(
 
         // 2. Cas 1 : utilisateur existe déjà
         if (existing) {
-          // S'il s'était inscrit avec mot de passe, on met à jour son profil
-          // OAuth (sans casser son mdp existant)
+          // 🔑 Google a déjà vérifié cet email → on le marque comme vérifié
+          // ✅ débloque les users email/mdp jamais activés (email_verified = 0)
+          // ✅ réactive les comptes désactivés (email_verified = -1)
+          const needsEmailFix =
+            existing.email_verified === 0 || existing.email_verified === -1;
+
+          const updateData: Record<string, unknown> = {};
+
           if (existing.provider === "local") {
+            updateData.provider = "google";
+            updateData.provider_id = profile.id;
+            updateData.avatar_url =
+              existing.avatar_url ?? profile.photos?.[0]?.value ?? null;
+          }
+
+          if (needsEmailFix) {
+            updateData.email_verified = 1;
+            updateData.activation_token = null;
+            updateData.activation_token_expires = null;
+          }
+
+          if (Object.keys(updateData).length > 0) {
             await db
               .update(users)
-              .set({
-                provider: "google",
-                provider_id: profile.id,
-                avatar_url:
-                  existing.avatar_url ?? profile.photos?.[0]?.value ?? null,
-              })
+              .set(updateData)
               .where(eq(users.id, existing.id));
           }
 
-          return done(null, toExpressUser(existing));
+          // On recharge le user pour avoir l'état à jour
+          const [refreshed] = await db
+            .select()
+            .from(users)
+            .where(eq(users.id, existing.id))
+            .limit(1);
+
+          return done(null, toExpressUser(refreshed ?? existing));
         }
 
         // 3. Cas 2 : nouvel utilisateur → on le crée

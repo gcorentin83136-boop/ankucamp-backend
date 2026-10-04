@@ -14,6 +14,7 @@ import {
 import { is2FAEnabled, create2FATempToken } from "./2fa/2fa.service";
 
 const SALT_ROUNDS = 10;
+const isTest = process.env.NODE_ENV === "test";
 
 const publicColumns = {
   id: users.id,
@@ -63,6 +64,9 @@ export async function registerUser(input: RegisterInput) {
       username,
       password_hash,
       provider: "local",
+      ...(isTest ? { email_verified: 1 } : {}),
+      // Auto-activation en mode test (pas d'email possible)
+      ...(isTest ? { email_verified: 1 } : {}),
     })
     .returning(publicColumns);
 
@@ -75,25 +79,21 @@ export async function registerUser(input: RegisterInput) {
 
     if (!existingSettings) {
       await db.insert(userSettings).values({ user_id: created.id });
-      console.log(`⚙️  user_settings créés pour user #${created.id}`);
+      console.log(`[settings] user_settings crees pour user #${created.id}`);
     }
   } catch (err) {
-    console.error("❌ Erreur création user_settings:", err);
+    console.error("[settings] Erreur creation user_settings:", err);
   }
 
-  sendActivationEmail(created.id, created.first_name, created.email).catch(
-    (err) => console.error("Erreur envoi email activation:", err)
-  );
+  if (!isTest) {
+    if (!isTest) sendActivationEmail(created.id, created.first_name, created.email).catch(
+      (err) => console.error("Erreur envoi email activation:", err)
+    );
+  }
 
   return created;
 }
 
-/**
- * Login avec création de session.
- * Retourne :
- *  - { user, token } si pas de 2FA
- *  - { requires_2fa: true, temp_token } si 2FA activée (le user doit valider via /auth/2fa/validate)
- */
 export async function loginUser(
   input: LoginInput,
   req?: any
@@ -114,11 +114,31 @@ export async function loginUser(
   }
 
   const valid = await bcrypt.compare(password, user.password_hash);
+
+  // Mot de passe incorrect -> 401 (avant tout autre check)
   if (!valid) {
     throw new AppError("Email ou mot de passe incorrect", 401);
   }
 
-  // ⚡ Si 2FA activée → on renvoie un temp_token, on ne crée PAS de session
+  // Gestion de l'etat du compte
+  if (user.email_verified === -1) {
+    // Compte desactive -> reactivation automatique
+    await db
+      .update(users)
+      .set({ email_verified: 1 })
+      .where(eq(users.id, user.id));
+
+    user.email_verified = 1;
+    console.log(`[auth] Compte #${user.id} reactive automatiquement au login`);
+  } else if (user.email_verified !== 1) {
+    // Compte jamais active (0) -> bloquer
+    throw new AppError(
+      "Ton compte n'est pas encore activé. Vérifie ta boîte mail (ou tes spams) et clique sur le lien d'activation.",
+      403
+    );
+  }
+
+  // Si 2FA activee -> on renvoie un temp_token, on ne cree PAS de session
   const has2FA = await is2FAEnabled(user.id);
   if (has2FA) {
     const temp_token = create2FATempToken(user.id);
@@ -136,7 +156,7 @@ export async function loginUser(
     try {
       await createSession(user.id, token, req);
     } catch (err) {
-      console.error("❌ Erreur création session:", err);
+      console.error("Erreur creation session:", err);
     }
   }
 

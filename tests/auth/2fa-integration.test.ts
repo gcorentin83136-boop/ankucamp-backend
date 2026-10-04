@@ -277,4 +277,4 @@ describe("2FA integration", () => {
       expect(statusRes.body.enabled).toBe(false);
     });
   });
-});
+}); 

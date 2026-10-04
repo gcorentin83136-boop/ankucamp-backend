@@ -183,3 +183,44 @@ export async function getFriends(req: AuthRequest, res: Response) {
 
   return res.json({ success: true, count: friends.length, friends });
 }
+
+// ============================================================
+// POST /users/me/become-pro
+// Convertit un particulier en professionnel + crée une demande KYC
+// Retourne un NOUVEAU JWT avec le rôle "professionnel"
+// ============================================================
+
+export async function becomePro(req: AuthRequest, res: Response) {
+  if (!req.user) throw new AppError("Non authentifié", 401);
+
+  // Imports dynamiques pour éviter les cycles
+  const { createKycSchema } = await import("../kyc/kyc.validation");
+  const { becomeProAndCreateKyc } = await import("../kyc/kyc.service");
+  const { signToken } = await import("../../security/jwt");
+
+  const parsed = createKycSchema.safeParse(req.body);
+  if (!parsed.success) {
+    throw new AppError(
+      "Données invalides",
+      400,
+      parsed.error.flatten().fieldErrors
+    );
+  }
+
+  const result = await becomeProAndCreateKyc(req.user.id, parsed.data);
+
+  // 🔑 Générer un nouveau JWT avec le rôle "professionnel"
+  const newToken = signToken({
+    id: req.user.id,
+    email: req.user.email,
+    role: "professionnel",
+  });
+
+  return res.status(201).json({
+    success: true,
+    message: "Demande envoyée. Ton compte est maintenant professionnel.",
+    kyc: result.kyc,
+    token: newToken,
+    newRole: "professionnel",
+  });
+}

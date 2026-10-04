@@ -5,6 +5,12 @@ import { env } from "../../../config/env";
 
 const router = Router();
 
+// URL du frontend selon l'environnement
+const FRONTEND_URL =
+  env.NODE_ENV === "development"
+    ? "http://localhost:5173"
+    : "https://ankucamp.com";
+
 // ============================================================
 // GET /auth/google
 // Redirige vers Google pour l'autorisation
@@ -25,15 +31,13 @@ router.get(
   "/google/callback",
   passport.authenticate("google", {
     session: false,
-    failureRedirect: `${env.NODE_ENV === "development" ? "http://localhost:3000" : "https://ankucamp.com"}/login?error=oauth_failed`,
+    failureRedirect: `${FRONTEND_URL}/login?error=oauth_failed`,
   }),
   (req: Request, res: Response) => {
     const user = req.user as any;
 
     if (!user) {
-      return res.redirect(
-        `${env.NODE_ENV === "development" ? "http://localhost:3000" : "https://ankucamp.com"}/login?error=no_user`
-      );
+      return res.redirect(`${FRONTEND_URL}/login?error=no_user`);
     }
 
     // Générer le JWT
@@ -45,12 +49,7 @@ router.get(
 
     // En prod, on redirige vers le front avec le token dans l'URL
     // ⚠️ Le front devra IMMÉDIATEMENT le stocker et le retirer de l'URL
-    const frontendUrl =
-      env.NODE_ENV === "development"
-        ? "http://localhost:3000"
-        : "https://ankucamp.com";
-
-    return res.redirect(`${frontendUrl}/auth/callback?token=${token}`);
+    return res.redirect(`${FRONTEND_URL}/auth/callback?token=${token}`);
   }
 );
 

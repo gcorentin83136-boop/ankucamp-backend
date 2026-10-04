@@ -2,7 +2,7 @@
 // ANKUCAMP — Tests d'intégration HTTP du module Settings > Account
 // ============================================================
 
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import request from "supertest";
 import app from "../src/app";
 import { db } from "../src/core/db";
@@ -11,7 +11,7 @@ import {
   userSettings,
   userSessions,
 } from "../src/core/db/schema";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import bcrypt from "bcrypt";
 
 // ============================================================
@@ -85,6 +85,13 @@ async function upsertUser(opts: {
 }
 
 async function login(email: string, password = PASSWORD): Promise<string> {
+  // En test : garantir que le user est active (les tests precedent
+  // peuvent avoir mis email_verified = 0 via un change-email)
+  await db
+    .update(users)
+    .set({ email_verified: 1 })
+    .where(eq(users.email, email));
+
   const res = await request(app)
     .post("/auth/login")
     .send({ email, password });
@@ -134,6 +141,23 @@ beforeAll(async () => {
 
   tokenA = await login("acctest_a@test.com");
   tokenB = await login("acctest_b@test.com");
+});
+
+// Restaure email_verified = 1 entre les tests : certains tests (change email,
+// deactivate) mettent ce flag a 0 / -1, ce qui casserait les tests suivants.
+beforeEach(async () => {
+  if (!userAId || !userBId) return;
+  // Remet email_verified = 1 UNIQUEMENT si l'user est a 0 (cas change-email).
+  // On ne touche PAS les users a -1 (desactivation volontaire pour un test).
+  await db
+    .update(users)
+    .set({ email_verified: 1 })
+    .where(
+      and(
+        inArray(users.id, [userAId, userBId]),
+        eq(users.email_verified, 0)
+      )
+    );
 });
 
 // ============================================================
