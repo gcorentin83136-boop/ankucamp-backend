@@ -1,4 +1,4 @@
-﻿import { eq, and, or, ilike, desc, sql } from "drizzle-orm";
+import { eq, and, or, ilike, desc, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { users, posts, friendships, reviews } from "../../db/schema";
 import { AppError } from "../../errors/AppError";
@@ -32,6 +32,8 @@ const publicColumns = {
   role: users.role,
   email_verified: users.email_verified,
   verification_status: users.verification_status,
+  suspended_until: users.suspended_until,
+  suspension_reason: users.suspension_reason,
   created_at: users.created_at,
 };
 
@@ -224,4 +226,131 @@ export async function getUserStats(userId: number) {
     reviews_count: reviewsCount?.count ?? 0,
     average_rating: Number((avgRating?.avg ?? 0).toFixed?.(1) ?? avgRating?.avg ?? 0),
   };
+}
+
+// ============================================================
+// ADMIN — SUSPENSION / SUPPRESSION
+// ============================================================
+
+import { userSessions } from "../../db/schema";
+
+/**
+ * Suspend un compte pour N jours (bloque le login uniquement).
+ */
+export async function suspendUser(
+  userId: number,
+  days: number,
+  reason: string
+) {
+  if (!Number.isInteger(days) || days < 1 || days > 365) {
+    throw new AppError("Durée de suspension invalide (1-365 jours)", 400);
+  }
+
+  const [user] = await db
+    .select({ id: users.id, role: users.role })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  if (!user) throw new AppError("Utilisateur introuvable", 404);
+  if (user.role === "admin") {
+    throw new AppError("Impossible de suspendre un admin", 403);
+  }
+
+  const suspendedUntil = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+
+  await db
+    .update(users)
+    .set({
+      suspended_until: suspendedUntil,
+      suspension_reason: reason || null,
+    })
+    .where(eq(users.id, userId));
+
+  // Révocation immédiate des sessions (l'user est déco tout de suite)
+  await db.delete(userSessions).where(eq(userSessions.user_id, userId));
+
+  console.log(
+    `🚫 User #${userId} suspendu jusqu'au ${suspendedUntil.toISOString()} (${days}j)`
+  );
+
+  return {
+    success: true,
+    suspended_until: suspendedUntil,
+    reason: reason || null,
+  };
+}
+
+/**
+ * Lève la suspension d'un compte.
+ */
+export async function unsuspendUser(userId: number) {
+  const [user] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  if (!user) throw new AppError("Utilisateur introuvable", 404);
+
+  await db
+    .update(users)
+    .set({ suspended_until: null, suspension_reason: null })
+    .where(eq(users.id, userId));
+
+  console.log(`✅ User #${userId} désuspendu`);
+
+  return { success: true };
+}
+
+/**
+ * Anonymise un compte (suppression définitive cohérente avec le scheduler RGPD).
+ * Les données liées (posts, orders, avis) restent en place mais rattachées à un compte anonyme.
+ */
+export async function anonymizeUser(userId: number) {
+  const [user] = await db
+    .select({ id: users.id, role: users.role })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  if (!user) throw new AppError("Utilisateur introuvable", 404);
+  if (user.role === "admin") {
+    throw new AppError("Impossible de supprimer un admin", 403);
+  }
+
+  const ts = Date.now();
+
+  await db
+    .update(users)
+    .set({
+      first_name: "Compte",
+      last_name: "Supprimé",
+      username: `deleted_${userId}_${ts}`,
+      email: `deleted-${userId}-${ts}@anku.local`,
+      password_hash: null,
+      avatar_url: null,
+      cover_url: null,
+      bio: null,
+      website: null,
+      location: null,
+      address: null,
+      city: null,
+      postal_code: null,
+      activation_token: null,
+      activation_token_expires: null,
+      reset_password_token: null,
+      reset_password_token_expires: null,
+      email_verified: 0,
+      suspended_until: null,
+      suspension_reason: null,
+    })
+    .where(eq(users.id, userId));
+
+  // Révocation de toutes les sessions
+  await db.delete(userSessions).where(eq(userSessions.user_id, userId));
+
+  console.log(`🗑️ User #${userId} anonymisé`);
+
+  return { success: true };
 }

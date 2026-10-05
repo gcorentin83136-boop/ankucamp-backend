@@ -14,6 +14,7 @@ import {
   validate2FALogin,
 } from "./2fa.service";
 import { signToken } from "../../../security/jwt";
+import { createSession } from "../../settings/sessions/sessions.service";
 
 // ============================================================
 // GET /auth/2fa/status
@@ -119,6 +120,13 @@ export async function validateLogin(req: AuthRequest, res: Response) {
     email: user.email,
     role: user.role as "professionnel" | "particulier" | "admin",
   });
+
+  // Cree la session en BDD (le authMiddleware la verifie a chaque requete)
+  try {
+    await createSession(user.id, token, req);
+  } catch (err) {
+    console.error("Erreur creation session 2FA:", err);
+  }
 
   return res.json({
     success: true,

@@ -3,6 +3,7 @@ import {
   authMiddleware,
   authOptionalMiddleware,
 } from "../../middlewares/auth.middleware";
+import { requireRole } from "../../middlewares/role.middleware";
 import { asyncHandler } from "../../errors/asyncHandler";
 import {
   getMe,
@@ -14,6 +15,9 @@ import {
   getStats,
   getFriends,
   becomePro,
+  adminSuspend,
+  adminUnsuspend,
+  adminDeleteUser,
 } from "./users.controller";
 
 const router = Router();
@@ -28,21 +32,47 @@ router.put("/me/privacy", authMiddleware, asyncHandler(putPrivacy));
 router.post("/me/become-pro", authMiddleware, asyncHandler(becomePro));
 
 // ============================================================
+// ADMIN — SUSPENSION / SUPPRESSION
+// (places avant /:id pour eviter les collisions)
+// ============================================================
+
+router.post(
+  "/:id/suspend",
+  authMiddleware,
+  requireRole("admin"),
+  asyncHandler(adminSuspend)
+);
+
+router.post(
+  "/:id/unsuspend",
+  authMiddleware,
+  requireRole("admin"),
+  asyncHandler(adminUnsuspend)
+);
+
+router.delete(
+  "/:id",
+  authMiddleware,
+  requireRole("admin"),
+  asyncHandler(adminDeleteUser)
+);
+
+// ============================================================
 // LECTURE PUBLIQUE
 // ============================================================
 
 router.get("/", asyncHandler(getAll));
 
-// âš ï¸ Route spÃ©cifique AVANT /:id
+// Route specifique AVANT /:id
 router.get("/u/:username", asyncHandler(getByUsername));
 
 // Stats + amis d'un user
 router.get("/:id/stats", asyncHandler(getStats));
 
-// Amis : auth optionnelle (profil privÃ© â†’ seul le propriÃ©taire voit)
+// Amis : auth optionnelle (profil prive -> seul le proprietaire voit)
 router.get("/:id/friends", authOptionalMiddleware, asyncHandler(getFriends));
 
-// Route dynamique gÃ©nÃ©rique EN DERNIER
+// Route dynamique generique EN DERNIER
 router.get("/:id", asyncHandler(getOne));
 
 export default router;

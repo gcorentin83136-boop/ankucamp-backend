@@ -227,14 +227,59 @@ export async function approveRefund(
   }
 
   // 4. Appel Stripe : crée le remboursement
+  // ============================================================
+  // DEV BYPASS : si NODE_ENV=development et PI factice (pi_test_*),
+  // on skip l'appel Stripe (le PI n'existe pas chez Stripe).
+  // ============================================================
+  // Le bypass s'active uniquement si STRIPE_BYPASS_DEV=true (voir .env)
+  // Par défaut en dev, on skip Stripe. Mets STRIPE_BYPASS_DEV=false pour tester pour de vrai.
+  const stripeBypassDev = process.env.STRIPE_BYPASS_DEV !== "false";
+
+  if (process.env.NODE_ENV === "development" && stripeBypassDev) {
+    console.log(
+      `[DEV] Bypass Stripe refund pour ${payment.stripe_payment_intent}`
+    );
+
+    const fakeRefundId = `re_dev_${Date.now()}`;
+
+    await db
+      .update(refundRequests)
+      .set({
+        status: "refunded",
+        stripe_refund_id: fakeRefundId,
+        admin_id: adminId,
+        admin_comment: adminComment
+          ? `${adminComment} [DEV BYPASS]`
+          : "[DEV BYPASS]",
+        processed_at: new Date(),
+      })
+      .where(eq(refundRequests.id, refundId));
+
+    await db
+      .update(payments)
+      .set({ status: "refunded" })
+      .where(eq(payments.id, payment.id));
+
+    await db
+      .update(orders)
+      .set({ status: "refunded" })
+      .where(eq(orders.id, refund.order_id));
+
+    return {
+      stripe_refund_id: fakeRefundId,
+      refund_amount: refund.refund_amount,
+      status: "refunded",
+      dev_bypass: true,
+    };
+  }
+
   let stripeRefund;
   try {
     stripeRefund = await stripe.refunds.create({
       payment_intent: payment.stripe_payment_intent,
-      // ✅ reverse_transfer : annule le transfert vers le vendeur
-      reverse_transfer: true,
-      // ✅ refund_application_fee : la plateforme rembourse aussi sa commission
-      refund_application_fee: true,
+      ...(payment.seller_stripe_account_id
+        ? { reverse_transfer: true, refund_application_fee: true }
+        : {}),
       reason: "requested_by_customer",
       metadata: {
         refund_request_id: String(refund.id),

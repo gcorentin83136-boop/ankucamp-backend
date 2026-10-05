@@ -47,6 +47,8 @@ export const users = pgTable("users", {
   verification_status: varchar("verification_status", { length: 20 })
     .default("none")
     .notNull(),
+  suspended_until: timestamp("suspended_until"),
+  suspension_reason: text("suspension_reason"),
   created_at: timestamp("created_at").defaultNow(),
 });
 

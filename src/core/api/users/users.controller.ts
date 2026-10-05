@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { AuthRequest } from "../../middlewares/auth.middleware";
 import { AppError } from "../../errors/AppError";
+import { createSession } from "../settings/sessions/sessions.service";
 import {
   getUserById,
   getUserByUsername,
@@ -216,11 +217,71 @@ export async function becomePro(req: AuthRequest, res: Response) {
     role: "professionnel",
   });
 
+  // ✅ Créer la session BDD pour le nouveau token
+  try {
+    await createSession(req.user.id, newToken, req);
+  } catch (err) {
+    console.error("Erreur création session becomePro:", err);
+  }
+
   return res.status(201).json({
     success: true,
     message: "Demande envoyée. Ton compte est maintenant professionnel.",
     kyc: result.kyc,
     token: newToken,
     newRole: "professionnel",
+  });
+}
+// ============================================================
+// ADMIN — SUSPENSION / SUPPRESSION
+// ============================================================
+
+import { suspendUser, unsuspendUser, anonymizeUser } from "./users.service";
+
+export async function adminSuspend(req: AuthRequest, res: Response) {
+  if (!req.user) throw new AppError("Non authentifié", 401);
+
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) throw new AppError("ID invalide", 400);
+
+  const { days, reason } = req.body as { days?: number; reason?: string };
+
+  const result = await suspendUser(
+    id,
+    Number(days ?? 15),
+    String(reason ?? "")
+  );
+
+  return res.json({
+    ...result,
+    message: `Utilisateur suspendu pour ${days ?? 15} jours`,
+  });
+}
+
+export async function adminUnsuspend(req: AuthRequest, res: Response) {
+  if (!req.user) throw new AppError("Non authentifié", 401);
+
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) throw new AppError("ID invalide", 400);
+
+  const result = await unsuspendUser(id);
+
+  return res.json({
+    ...result,
+    message: "Suspension levée",
+  });
+}
+
+export async function adminDeleteUser(req: AuthRequest, res: Response) {
+  if (!req.user) throw new AppError("Non authentifié", 401);
+
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) throw new AppError("ID invalide", 400);
+
+  const result = await anonymizeUser(id);
+
+  return res.json({
+    ...result,
+    message: "Compte supprimé définitivement",
   });
 }

@@ -1,7 +1,8 @@
-import { Router, Request, Response } from "express";
+﻿import { Router, Request, Response } from "express";
 import { passport } from "../../../config/passport";
 import { signToken } from "../../security/jwt";
 import { env } from "../../../config/env";
+import { createSession } from "../settings/sessions/sessions.service";
 
 const router = Router();
 
@@ -25,7 +26,7 @@ router.get(
 
 // ============================================================
 // GET /auth/google/callback
-// Google renvoie ici après autorisation
+// Google renvoie ici apres autorisation
 // ============================================================
 router.get(
   "/google/callback",
@@ -33,22 +34,28 @@ router.get(
     session: false,
     failureRedirect: `${FRONTEND_URL}/login?error=oauth_failed`,
   }),
-  (req: Request, res: Response) => {
+  async (req: Request, res: Response) => {
     const user = req.user as any;
 
     if (!user) {
       return res.redirect(`${FRONTEND_URL}/login?error=no_user`);
     }
 
-    // Générer le JWT
+    // Generer le JWT
     const token = signToken({
       id: user.id,
       email: user.email,
       role: user.role,
     });
 
-    // En prod, on redirige vers le front avec le token dans l'URL
-    // ⚠️ Le front devra IMMÉDIATEMENT le stocker et le retirer de l'URL
+    // Creer la session en BDD (le authMiddleware la verifie a chaque requete)
+    try {
+      await createSession(user.id, token, req);
+    } catch (err) {
+      console.error("Erreur creation session OAuth:", err);
+    }
+
+    // Redirige vers le front avec le token dans l'URL
     return res.redirect(`${FRONTEND_URL}/auth/callback?token=${token}`);
   }
 );

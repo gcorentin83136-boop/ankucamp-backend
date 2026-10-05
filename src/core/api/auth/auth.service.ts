@@ -120,6 +120,20 @@ export async function loginUser(
     throw new AppError("Email ou mot de passe incorrect", 401);
   }
 
+  // Compte suspendu -> 403 (blocage temporaire)
+  if (
+    user.suspended_until &&
+    new Date(user.suspended_until) > new Date()
+  ) {
+    const dateFin = new Date(user.suspended_until).toLocaleDateString("fr-FR");
+    throw new AppError(
+      `Ton compte est suspendu jusqu'au ${dateFin}. Raison : ${
+        user.suspension_reason || "non précisée"
+      }`,
+      403
+    );
+  }
+
   // Gestion de l'etat du compte
   if (user.email_verified === -1) {
     // Compte desactive -> reactivation automatique

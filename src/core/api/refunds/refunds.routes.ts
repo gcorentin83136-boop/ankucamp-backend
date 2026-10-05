@@ -1,4 +1,4 @@
-import { Router } from "express";
+﻿import { Router } from "express";
 import { authMiddleware } from "../../middlewares/auth.middleware";
 import { requireRole } from "../../middlewares/role.middleware";
 import { asyncHandler } from "../../errors/asyncHandler";
@@ -14,11 +14,23 @@ import {
 
 const router = Router();
 
-// Toutes les routes nécessitent une authentification
+// ============================================================
+// AUTH OBLIGATOIRE
+// ============================================================
+
 router.use(authMiddleware);
 
 // ============================================================
-// RATE LIMITING : 5 demandes/heure par user
+// ADMIN (AVANT le rate limit !)
+// Les admins ne doivent PAS être limités par refundsLimiter.
+// ============================================================
+
+router.get("/", requireRole("admin"), asyncHandler(listAll));
+router.put("/:id/approve", requireRole("admin"), asyncHandler(approve));
+router.put("/:id/reject", requireRole("admin"), asyncHandler(reject));
+
+// ============================================================
+// RATE LIMITING : 5 demandes/heure par user (BUYER uniquement)
 // ============================================================
 
 router.use(refundsLimiter);
@@ -29,14 +41,6 @@ router.use(refundsLimiter);
 
 router.post("/request", asyncHandler(request));
 router.get("/me", asyncHandler(listMine));
-
-// ============================================================
-// ADMIN
-// ============================================================
-
-router.get("/", requireRole("admin"), asyncHandler(listAll));
-router.put("/:id/approve", requireRole("admin"), asyncHandler(approve));
-router.put("/:id/reject", requireRole("admin"), asyncHandler(reject));
 
 // ============================================================
 // BUYER OU ADMIN
