@@ -1,6 +1,7 @@
 import bcrypt from "bcrypt";
+import crypto from "crypto";
 import { testDb } from "./testSetup";
-import { users, shops, products, orders, orderItems } from "../../src/core/db/schema";
+import { users, userSessions, shops, products, orders, orderItems } from "../../src/core/db/schema";
 import { signToken } from "../../src/core/security/jwt";
 
 // ============================================================
@@ -60,6 +61,17 @@ export async function createUser(options: CreateUserOptions) {
     id: user.id,
     email: user.email,
     role: user.role as "particulier" | "professionnel" | "admin",
+  });
+
+  // Enregistrer la session en BDD (le authMiddleware la verifie desormais)
+  const token_hash = crypto.createHash("sha256").update(token).digest("hex");
+  await testDb.insert(userSessions).values({
+    user_id: user.id,
+    token_hash,
+    device_info: "Test Device",
+    ip_address: "127.0.0.1",
+    user_agent: "vitest",
+    expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
   });
 
   return {

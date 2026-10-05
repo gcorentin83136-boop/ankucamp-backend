@@ -1,8 +1,9 @@
 ﻿import { Request, Response, NextFunction } from "express";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { verifyToken } from "../security/jwt";
 import { db } from "../db";
-import { users } from "../db/schema";
+import { users, userSessions } from "../db/schema";
+import { hashToken } from "../api/settings/sessions/sessions.service";
 
 export interface AuthRequest extends Request {
   user?: Express.User;
@@ -11,12 +12,13 @@ export interface AuthRequest extends Request {
 /**
  * Middleware d'authentification obligatoire.
  *
- * ✅ Vérifie le JWT
+ * ✅ Vérifie le JWT (signature + expiration)
  * ✅ Vérifie que le compte existe toujours en BDD
  * ✅ Vérifie que le compte n'est pas désactivé (email_verified === -1)
+ * ✅ Vérifie que la session existe toujours en BDD (révocation immédiate)
  *
- * → Un compte désactivé est immédiatement rejeté (401),
- *   même si son JWT est encore valide.
+ * → Révocation immédiate : dès que la session est supprimée de user_sessions,
+ *   le JWT devient inutilisable même s'il est encore valide techniquement.
  */
 export async function authMiddleware(
   req: AuthRequest,
@@ -39,8 +41,8 @@ export async function authMiddleware(
     return res.status(401).json({ success: false, message: "Token invalide" });
   }
 
-  // 2. Vérifier l'état du compte en BDD
   try {
+    // 2. Vérifier l'état du compte en BDD
     const [user] = await db
       .select({ id: users.id, email_verified: users.email_verified })
       .from(users)
@@ -60,6 +62,38 @@ export async function authMiddleware(
       });
     }
 
+    // 3. Vérifier que la session existe toujours en BDD
+    const token_hash = hashToken(token);
+    const [session] = await db
+      .select({
+        id: userSessions.id,
+        expires_at: userSessions.expires_at,
+      })
+      .from(userSessions)
+      .where(
+        and(
+          eq(userSessions.user_id, user.id),
+          eq(userSessions.token_hash, token_hash)
+        )
+      )
+      .limit(1);
+
+    if (!session) {
+      return res.status(401).json({
+        success: false,
+        message: "Session expirée ou révoquée. Reconnecte-toi.",
+      });
+    }
+
+    if (session.expires_at < new Date()) {
+      // Session expirée en BDD → on la nettoie et on rejette
+      await db.delete(userSessions).where(eq(userSessions.id, session.id));
+      return res.status(401).json({
+        success: false,
+        message: "Session expirée. Reconnecte-toi.",
+      });
+    }
+
     req.user = payload;
     next();
   } catch (err) {
@@ -72,10 +106,10 @@ export async function authMiddleware(
 
 /**
  * Middleware d'authentification OPTIONNELLE.
- * - Si token valide → req.user est rempli
- * - Si token manquant ou invalide → on continue sans req.user
+ * - Si token valide ET session active → req.user est rempli
+ * - Si token manquant, invalide, ou session révoquée → on continue sans req.user
  */
-export function authOptionalMiddleware(
+export async function authOptionalMiddleware(
   req: AuthRequest,
   _res: Response,
   next: NextFunction
@@ -90,9 +124,25 @@ export function authOptionalMiddleware(
 
   try {
     const payload = verifyToken(token);
-    req.user = payload;
+
+    // Vérifier que la session existe toujours (révocation immédiate)
+    const token_hash = hashToken(token);
+    const [session] = await db
+      .select({ id: userSessions.id, expires_at: userSessions.expires_at })
+      .from(userSessions)
+      .where(
+        and(
+          eq(userSessions.user_id, payload.id),
+          eq(userSessions.token_hash, token_hash)
+        )
+      )
+      .limit(1);
+
+    if (session && session.expires_at >= new Date()) {
+      req.user = payload;
+    }
   } catch {
-    // Token invalide → on ignore silencieusement
+    // Token invalide ou révoqué → on ignore silencieusement
   }
 
   next();
