@@ -2,8 +2,10 @@ import { eq, inArray } from "drizzle-orm";
 import { db } from "../../db";
 import { orders, orderItems, products, payments, users } from "../../db/schema";
 import { AppError } from "../../errors/AppError";
-import { generateInvoiceNumber } from "../../emails/invoice";
-import { resendInvoiceEmail, sendOrderStatusEmail } from "./orders.emails";
+import { sendOrderStatusEmail } from "./orders.emails";
+import { sendEmail } from "../../emails/email.service";
+import { generateInvoicePdf, generateInvoiceNumber } from "../../emails/invoice";
+import { invoiceResentTemplate } from "../../emails/templates/invoiceResent";
 import {
   notifyOrderShipped,
   notifyOrderDelivered,
@@ -46,15 +48,50 @@ export async function getOrdersBySeller(sellerId: number) {
   if (sellerOrders.length === 0) return [];
 
   const orderIds = sellerOrders.map((o) => o.id);
+  const buyerIds = [...new Set(sellerOrders.map((o) => o.buyer_id))];
 
-  const items = await db
-    .select()
-    .from(orderItems)
-    .where(inArray(orderItems.order_id, orderIds));
+  const [items, buyers] = await Promise.all([
+    db
+      .select()
+      .from(orderItems)
+      .where(inArray(orderItems.order_id, orderIds)),
+    db
+      .select({
+        id: users.id,
+        first_name: users.first_name,
+        last_name: users.last_name,
+        username: users.username,
+        avatar_url: users.avatar_url,
+      })
+      .from(users)
+      .where(inArray(users.id, buyerIds)),
+  ]);
+
+  const productIds = [...new Set(items.map((i) => i.product_id))];
+  const productsFound =
+    productIds.length > 0
+      ? await db
+          .select({
+            id: products.id,
+            name: products.name,
+            image_url: products.image_url,
+          })
+          .from(products)
+          .where(inArray(products.id, productIds))
+      : [];
+
+  const productsMap = new Map(productsFound.map((p) => [p.id, p]));
+  const buyersMap = new Map(buyers.map((b) => [b.id, b]));
 
   return sellerOrders.map((order) => ({
     ...order,
-    items: items.filter((i) => i.order_id === order.id),
+    buyer: buyersMap.get(order.buyer_id) ?? null,
+    items: items
+      .filter((i) => i.order_id === order.id)
+      .map((i) => ({
+        ...i,
+        product: productsMap.get(i.product_id) ?? null,
+      })),
   }));
 }
 
@@ -67,12 +104,47 @@ export async function getOrderById(id: number) {
 
   if (!order) return null;
 
-  const items = await db
-    .select()
-    .from(orderItems)
-    .where(eq(orderItems.order_id, id));
+  const [items, buyerRows] = await Promise.all([
+    db
+      .select()
+      .from(orderItems)
+      .where(eq(orderItems.order_id, id)),
+    db
+      .select({
+        id: users.id,
+        first_name: users.first_name,
+        last_name: users.last_name,
+        username: users.username,
+        avatar_url: users.avatar_url,
+      })
+      .from(users)
+      .where(eq(users.id, order.buyer_id))
+      .limit(1),
+  ]);
 
-  return { ...order, items };
+  const productIds = [...new Set(items.map((i) => i.product_id))];
+  const productsFound =
+    productIds.length > 0
+      ? await db
+          .select({
+            id: products.id,
+            name: products.name,
+            image_url: products.image_url,
+          })
+          .from(products)
+          .where(inArray(products.id, productIds))
+      : [];
+
+  const productsMap = new Map(productsFound.map((p) => [p.id, p]));
+
+  return {
+    ...order,
+    buyer: buyerRows[0] ?? null,
+    items: items.map((i) => ({
+      ...i,
+      product: productsMap.get(i.product_id) ?? null,
+    })),
+  };
 }
 
 // ============================================================
@@ -323,15 +395,16 @@ export async function resendInvoiceService(
     throw new AppError("Vous n'avez pas accès à cette facture", 403);
   }
 
+  // Payment requis (commande payée)
   const [payment] = await db
     .select()
     .from(payments)
     .where(eq(payments.order_id, orderId))
     .limit(1);
 
-  if (!payment || !payment.invoice_url) {
+  if (!payment) {
     throw new AppError(
-      "La facture n'est pas disponible pour cette commande (commande non payée)",
+      "Aucun paiement trouvé pour cette commande — impossible de générer la facture",
       400
     );
   }
@@ -342,13 +415,90 @@ export async function resendInvoiceService(
     .where(eq(users.id, order.buyer_id))
     .limit(1);
 
-  if (!buyer) {
-    throw new AppError("Acheteur introuvable", 404);
+  const [seller] = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, order.seller_id))
+    .limit(1);
+
+  if (!buyer || !seller) {
+    throw new AppError("Acheteur ou vendeur introuvable", 404);
   }
 
-  await resendInvoiceEmail(order.id, buyer.email, buyer.first_name);
+  // Items + produits
+  const items = await db
+    .select({
+      productName: products.name,
+      quantity: orderItems.quantity,
+      unitPrice: orderItems.unit_price,
+    })
+    .from(orderItems)
+    .leftJoin(products, eq(products.id, orderItems.product_id))
+    .where(eq(orderItems.order_id, orderId));
 
-  const invoiceNumber = generateInvoiceNumber(order.id);
+  const itemsMapped = items.map((i) => ({
+    productName: i.productName ?? "Produit",
+    quantity: i.quantity,
+    unitPrice: i.unitPrice,
+  }));
+
+  // Génération PDF
+  const invoiceNumber = generateInvoiceNumber(orderId);
+  const totalPrice = Number(order.total_price);
+  const feeAmount = payment.application_fee_amount
+    ? Number(payment.application_fee_amount)
+    : 0;
+  const sellerAmount = payment.seller_amount
+    ? Number(payment.seller_amount)
+    : totalPrice - feeAmount;
+  const platformFeePercent =
+    totalPrice > 0 ? Math.round((feeAmount / totalPrice) * 1000) / 10 : 0;
+
+  const pdfBuffer = await generateInvoicePdf({
+    invoiceNumber,
+    orderId: order.id,
+    date: order.created_at ? new Date(order.created_at) : new Date(),
+    buyerName: `${buyer.first_name} ${buyer.last_name}`.trim(),
+    buyerEmail: buyer.email,
+    sellerName: `${seller.first_name} ${seller.last_name}`.trim(),
+    sellerEmail: seller.email,
+    sellerAddress: seller.address ?? null,
+    items: itemsMapped,
+    totalPrice: order.total_price,
+    deliveryMethod:
+      order.delivery_method === "pickup"
+        ? "Retrait sur place"
+        : order.delivery_method === "shipping"
+        ? "Livraison"
+        : order.delivery_method,
+    deliveryAddress: order.delivery_address,
+    paymentIntentId: payment.stripe_payment_intent,
+    applicationFeeAmount: feeAmount.toFixed(2),
+    sellerAmount: sellerAmount.toFixed(2),
+    platformFeePercent,
+  });
+
+  // Template email
+  const tpl = invoiceResentTemplate({
+    recipientFirstName: buyer.first_name,
+    orderId: order.id,
+    invoiceNumber,
+  });
+
+  // Envoi email avec PDF en pièce jointe (base64)
+  await sendEmail({
+    to: buyer.email,
+    toName: `${buyer.first_name} ${buyer.last_name}`.trim(),
+    subject: tpl.subject,
+    htmlContent: tpl.htmlContent,
+    textContent: tpl.textContent,
+    attachments: [
+      {
+        name: `facture-${invoiceNumber}.pdf`,
+        content: pdfBuffer.toString("base64"),
+      },
+    ],
+  });
 
   return {
     sentTo: buyer.email,

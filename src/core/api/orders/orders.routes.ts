@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { authMiddleware } from "../../middlewares/auth.middleware";
+import { authMiddleware, authMiddlewareQueryOrHeader } from "../../middlewares/auth.middleware";
 import { asyncHandler } from "../../errors/asyncHandler";
 import {
   listMyOrders,
@@ -22,7 +22,7 @@ router.get("/seller/me", asyncHandler(listSellerOrders));
 router.post("/", asyncHandler(createOne));
 
 // ⚠️ Doit être déclaré AVANT "/:id" pour ne pas être capturé par le param
-router.get("/:id/invoice", asyncHandler(downloadInvoice));
+router.get("/:id/invoice", authMiddlewareQueryOrHeader, asyncHandler(downloadInvoice));
 router.post("/:id/invoice/resend", asyncHandler(resendInvoice));
 
 // Routes dynamiques

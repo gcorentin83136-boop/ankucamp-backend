@@ -185,8 +185,6 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
 
       // TOTAUX
       const totalPrice = Number(data.totalPrice);
-      const feeAmount = Number(data.applicationFeeAmount);
-      const sellerAmount = Number(data.sellerAmount);
 
       doc
         .fillColor(COLORS.dark)
@@ -202,55 +200,6 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
         .fillColor(COLORS.primary)
         .text(`${totalPrice.toFixed(2)} €`, 300, y + 18, {
           width: 245,
-          align: "right",
-        });
-
-      y += 60;
-
-      doc
-        .moveTo(300, y)
-        .lineTo(545, y)
-        .strokeColor(COLORS.border)
-        .lineWidth(1)
-        .stroke();
-
-      y += 15;
-
-      doc
-        .fillColor(COLORS.gray)
-        .fontSize(9)
-        .font("Helvetica")
-        .text(`Commission ANKU (${data.platformFeePercent}%)`, 300, y, {
-          width: 175,
-          align: "left",
-        });
-
-      doc
-        .fillColor(COLORS.red)
-        .fontSize(10)
-        .font("Helvetica-Bold")
-        .text(`${feeAmount.toFixed(2)} €`, 480, y, {
-          width: 65,
-          align: "right",
-        });
-
-      y += 20;
-
-      doc
-        .fillColor(COLORS.gray)
-        .fontSize(9)
-        .font("Helvetica")
-        .text("Montant versé au vendeur", 300, y, {
-          width: 175,
-          align: "left",
-        });
-
-      doc
-        .fillColor(COLORS.green)
-        .fontSize(10)
-        .font("Helvetica-Bold")
-        .text(`${sellerAmount.toFixed(2)} €`, 480, y, {
-          width: 65,
           align: "right",
         });
 

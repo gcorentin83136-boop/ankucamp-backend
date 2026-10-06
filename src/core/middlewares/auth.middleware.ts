@@ -1,4 +1,4 @@
-﻿import { Request, Response, NextFunction } from "express";
+import { Request, Response, NextFunction } from "express";
 import { and, eq } from "drizzle-orm";
 import { verifyToken } from "../security/jwt";
 import { db } from "../db";
@@ -98,6 +98,99 @@ export async function authMiddleware(
     next();
   } catch (err) {
     console.error("❌ Erreur authMiddleware:", err);
+    return res
+      .status(500)
+      .json({ success: false, message: "Erreur serveur" });
+  }
+}
+
+/**
+ * Middleware d'authentification via header Bearer OU query `?token=...`.
+ *
+ * ⚠️ À utiliser UNIQUEMENT pour les routes déclenchées par navigation
+ * directe du navigateur (téléchargement de PDF, images, etc.), car le
+ * token en query peut fuiter dans les logs / referer.
+ */
+export async function authMiddlewareQueryOrHeader(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) {
+  const header = req.headers.authorization;
+  const queryToken = typeof req.query.token === "string" ? req.query.token : null;
+
+  let token: string | null = null;
+  if (header && header.startsWith("Bearer ")) {
+    token = header.slice(7);
+  } else if (queryToken) {
+    token = queryToken;
+  }
+
+  if (!token) {
+    return res.status(401).json({ success: false, message: "Token manquant" });
+  }
+
+  let payload: any;
+  try {
+    payload = verifyToken(token);
+  } catch {
+    return res.status(401).json({ success: false, message: "Token invalide" });
+  }
+
+  try {
+    const [user] = await db
+      .select({ id: users.id, email_verified: users.email_verified })
+      .from(users)
+      .where(eq(users.id, payload.id))
+      .limit(1);
+
+    if (!user) {
+      return res
+        .status(401)
+        .json({ success: false, message: "Compte introuvable" });
+    }
+
+    if (user.email_verified === -1) {
+      return res.status(401).json({
+        success: false,
+        message: "Compte désactivé. Reconnecte-toi pour le réactiver.",
+      });
+    }
+
+    const token_hash = hashToken(token);
+    const [session] = await db
+      .select({
+        id: userSessions.id,
+        expires_at: userSessions.expires_at,
+      })
+      .from(userSessions)
+      .where(
+        and(
+          eq(userSessions.user_id, user.id),
+          eq(userSessions.token_hash, token_hash)
+        )
+      )
+      .limit(1);
+
+    if (!session) {
+      return res.status(401).json({
+        success: false,
+        message: "Session expirée ou révoquée. Reconnecte-toi.",
+      });
+    }
+
+    if (session.expires_at < new Date()) {
+      await db.delete(userSessions).where(eq(userSessions.id, session.id));
+      return res.status(401).json({
+        success: false,
+        message: "Session expirée. Reconnecte-toi.",
+      });
+    }
+
+    req.user = payload;
+    next();
+  } catch (err) {
+    console.error("❌ Erreur authMiddlewareQueryOrHeader:", err);
     return res
       .status(500)
       .json({ success: false, message: "Erreur serveur" });

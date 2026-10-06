@@ -179,6 +179,37 @@ export async function getShopsNearby(
 // ÉCRITURE
 // ============================================================
 
+async function generateUniqueShopSlug(
+  name: string,
+  excludeId?: number
+): Promise<string> {
+  const base =
+    name
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 80) || `boutique-${Date.now()}`;
+
+  let slug = base;
+  let suffix = 1;
+
+  while (true) {
+    const [existing] = await db
+      .select({ id: shops.id })
+      .from(shops)
+      .where(eq(shops.slug, slug))
+      .limit(1);
+
+    if (!existing || (excludeId !== undefined && existing.id === excludeId)) {
+      return slug;
+    }
+    suffix++;
+    slug = `${base}-${suffix}`;
+  }
+}
+
 export async function createShop(ownerId: number, input: CreateShopInput) {
   await maybeGeocode(input);
 

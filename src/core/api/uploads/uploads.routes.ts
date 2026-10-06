@@ -1,6 +1,10 @@
-﻿import { Router } from "express";
+import { Router } from "express";
 import { authMiddleware } from "../../middlewares/auth.middleware";
-import { upload, uploadDocument } from "../../middlewares/upload.middleware";
+import {
+  upload,
+  uploadDocument,
+  uploadVideo,
+} from "../../middlewares/upload.middleware";
 import { asyncHandler } from "../../errors/asyncHandler";
 import { uploadsLimiter } from "../../../config/security";
 import {
@@ -8,6 +12,10 @@ import {
   uploadCover,
   uploadShopLogo,
   uploadProductImage,
+  uploadProductImageDraft,
+  uploadProductVideo,
+  uploadProductVideoDraft,
+  deleteProductVideo,
   uploadPostMedia,
   uploadKycDocument,
 } from "./uploads.controller";
@@ -21,14 +29,77 @@ router.use(uploadsLimiter);
 // IMAGES
 // ============================================================
 
-router.post("/avatar", authMiddleware, upload.single("file"), asyncHandler(uploadAvatar));
-router.post("/cover", authMiddleware, upload.single("file"), asyncHandler(uploadCover));
-router.post("/shop-logo", authMiddleware, upload.single("file"), asyncHandler(uploadShopLogo));
-router.post("/product", authMiddleware, upload.single("file"), asyncHandler(uploadProductImage));
-router.post("/post-media", authMiddleware, upload.single("file"), asyncHandler(uploadPostMedia));
+router.post(
+  "/avatar",
+  authMiddleware,
+  upload.single("file"),
+  asyncHandler(uploadAvatar)
+);
+
+router.post(
+  "/cover",
+  authMiddleware,
+  upload.single("file"),
+  asyncHandler(uploadCover)
+);
+
+router.post(
+  "/shop-logo",
+  authMiddleware,
+  upload.single("file"),
+  asyncHandler(uploadShopLogo)
+);
+
+// Image liee a un produit existant (update)
+router.post(
+  "/product",
+  authMiddleware,
+  upload.single("file"),
+  asyncHandler(uploadProductImage)
+);
+
+// Image DRAFT (avant creation produit) - retourne juste l'URL
+router.post(
+  "/product-image-draft",
+  authMiddleware,
+  upload.single("file"),
+  asyncHandler(uploadProductImageDraft)
+);
+
+// Media de post
+router.post(
+  "/post-media",
+  authMiddleware,
+  upload.single("file"),
+  asyncHandler(uploadPostMedia)
+);
 
 // ============================================================
-// DOCUMENTS KYC (PDF + images) ⭐ NOUVEAU
+// VIDEOS PRODUIT
+// ============================================================
+
+router.post(
+  "/product-video-draft",
+  authMiddleware,
+  uploadVideo.single("file"),
+  asyncHandler(uploadProductVideoDraft)
+);
+
+router.post(
+  "/product-video",
+  authMiddleware,
+  uploadVideo.single("file"),
+  asyncHandler(uploadProductVideo)
+);
+
+router.delete(
+  "/product-video",
+  authMiddleware,
+  asyncHandler(deleteProductVideo)
+);
+
+// ============================================================
+// DOCUMENTS KYC (PDF + images)
 // ============================================================
 
 router.post(

@@ -1,4 +1,4 @@
-import { eq, notInArray, inArray } from "drizzle-orm";
+﻿import { eq, notInArray, inArray } from "drizzle-orm";
 import { db } from "../../db";
 import { products, shops, shopSettings, users } from "../../db/schema";
 import { AppError } from "../../errors/AppError";
@@ -25,7 +25,7 @@ async function assertShopOwner(shopId: number, userId: number) {
 
   if (!shop) throw new AppError("Boutique introuvable", 404);
   if (shop.owner_id !== userId) {
-    throw new AppError("Vous n'êtes pas le propriétaire de cette boutique", 403);
+    throw new AppError("Vous n'etes pas le proprietaire de cette boutique", 403);
   }
 
   return shop;
@@ -53,11 +53,6 @@ async function getHiddenShopIds(): Promise<number[]> {
   return rows.map((r) => r.shop_id);
 }
 
-/**
- * Enrichit un produit avec shop + owner + badges + rating.
- * Maps optionnels pour batch anti N+1.
- * ✅ Exporté pour être réutilisable (wishlist, cart...).
- */
 export async function enrichProduct(
   product: any,
   shopMap?: Map<number, any>,
@@ -182,9 +177,19 @@ export async function createProduct(
       name: input.name,
       description: input.description ?? null,
       image_url: input.image_url || null,
+      video_urls:
+        input.video_urls && input.video_urls.length > 0
+          ? JSON.stringify(input.video_urls)
+          : null,
       location: input.location ?? null,
-      stock: input.stock ?? 0,
+      stock: input.has_unlimited_stock ? 0 : input.stock ?? 0,
+      has_unlimited_stock: input.has_unlimited_stock ? 1 : 0,
       price: String(input.price),
+      delivery_pickup: input.delivery_pickup === false ? 0 : 1,
+      delivery_shipping: input.delivery_shipping ? 1 : 0,
+      delivery_meeting: input.delivery_meeting ? 1 : 0,
+      meeting_point_address: input.meeting_point_address ?? null,
+      meeting_point_instructions: input.meeting_point_instructions ?? null,
     })
     .returning();
 
@@ -198,9 +203,46 @@ export async function updateProduct(
 ) {
   await assertProductOwnership(productId, userId);
 
-  const dataToUpdate: Record<string, unknown> = { ...input };
+  const dataToUpdate: Record<string, unknown> = {};
+
+  if (input.name !== undefined) dataToUpdate.name = input.name;
+  if (input.description !== undefined)
+    dataToUpdate.description = input.description;
+  if (input.image_url !== undefined) dataToUpdate.image_url = input.image_url;
+  if (input.location !== undefined) dataToUpdate.location = input.location;
+  if (input.meeting_point_address !== undefined)
+    dataToUpdate.meeting_point_address = input.meeting_point_address;
+  if (input.meeting_point_instructions !== undefined)
+    dataToUpdate.meeting_point_instructions = input.meeting_point_instructions;
+
   if (typeof input.price === "number") {
     dataToUpdate.price = String(input.price);
+  }
+
+  if (input.video_urls !== undefined) {
+    dataToUpdate.video_urls =
+      input.video_urls.length > 0 ? JSON.stringify(input.video_urls) : null;
+  }
+
+  if (input.has_unlimited_stock !== undefined) {
+    dataToUpdate.has_unlimited_stock = input.has_unlimited_stock ? 1 : 0;
+    if (input.has_unlimited_stock) {
+      dataToUpdate.stock = 0;
+    } else if (typeof input.stock === "number") {
+      dataToUpdate.stock = input.stock;
+    }
+  } else if (typeof input.stock === "number") {
+    dataToUpdate.stock = input.stock;
+  }
+
+  if (input.delivery_pickup !== undefined) {
+    dataToUpdate.delivery_pickup = input.delivery_pickup ? 1 : 0;
+  }
+  if (input.delivery_shipping !== undefined) {
+    dataToUpdate.delivery_shipping = input.delivery_shipping ? 1 : 0;
+  }
+  if (input.delivery_meeting !== undefined) {
+    dataToUpdate.delivery_meeting = input.delivery_meeting ? 1 : 0;
   }
 
   const [updated] = await db

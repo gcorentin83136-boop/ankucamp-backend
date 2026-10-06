@@ -54,3 +54,29 @@ export const uploadDocument = multer({
     cb(null, true);
   },
 });
+
+// ------------------------------------------------------------
+// Upload VIDÉOS (produits : mp4, webm, mov, 50 MB max)
+// ------------------------------------------------------------
+const MAX_VIDEO_SIZE = 50 * 1024 * 1024; // 50 MB
+const ALLOWED_VIDEO_TYPES = [
+  "video/mp4",
+  "video/webm",
+  "video/quicktime", // .mov
+];
+
+export const uploadVideo = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_VIDEO_SIZE },
+  fileFilter: (_req, file, cb) => {
+    if (!ALLOWED_VIDEO_TYPES.includes(file.mimetype)) {
+      return cb(
+        new AppError(
+          "Format vidéo non supporté (mp4, webm, mov uniquement)",
+          400
+        )
+      );
+    }
+    cb(null, true);
+  },
+});

@@ -65,3 +65,5 @@ backups/
 # SENTRY
 # ================
 .sentryclirc
+# Scripts de test locaux
+src/scripts/

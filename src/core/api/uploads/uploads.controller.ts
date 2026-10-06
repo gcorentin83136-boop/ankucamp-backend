@@ -1,4 +1,4 @@
-﻿import { Response } from "express";
+import { Response } from "express";
 import { eq } from "drizzle-orm";
 import { cloudinary } from "../../../config/cloudinary";
 import { db } from "../../db";
@@ -14,7 +14,7 @@ interface UploadOptions {
   width?: number;
   height?: number;
   crop?: string;
-  resourceType?: "image" | "raw" | "auto";
+  resourceType?: "image" | "raw" | "auto" | "video";
   format?: string;
 }
 
@@ -191,6 +191,196 @@ export async function uploadKycDocument(req: AuthRequest, res: Response) {
   return res.status(200).json({
     success: true,
     message: "Document uploadé",
+    url,
+  });
+}
+
+// ============================================================
+// POST /uploads/product-image-draft
+// Upload une image SANS product_id (avant creation du produit).
+// Retourne juste l'URL Cloudinary.
+// ============================================================
+export async function uploadProductImageDraft(
+  req: AuthRequest,
+  res: Response
+) {
+  if (!req.user) throw new AppError("Non authentifie", 401);
+  if (!req.file) throw new AppError("Aucun fichier fourni", 400);
+
+  const url = await uploadToCloudinary(
+    req.file.buffer,
+    "ankucamp/products",
+    {
+      width: 1200,
+      height: 1200,
+    }
+  );
+
+  return res.status(200).json({
+    success: true,
+    message: "Image uploadee",
+    url,
+  });
+}
+
+// ============================================================
+// POST /uploads/product-video
+// Upload une video produit (max 3 par produit).
+// Body : multipart avec file + product_id
+// Append l'URL au tableau video_urls du produit.
+// ============================================================
+export async function uploadProductVideo(
+  req: AuthRequest,
+  res: Response
+) {
+  if (!req.user) throw new AppError("Non authentifie", 401);
+  if (!req.file) throw new AppError("Aucun fichier fourni", 400);
+
+  const productId = Number(req.body.product_id);
+  if (isNaN(productId)) {
+    throw new AppError("product_id requis dans le body", 400);
+  }
+
+  const [product] = await db
+    .select()
+    .from(products)
+    .where(eq(products.id, productId))
+    .limit(1);
+  if (!product) throw new AppError("Produit introuvable", 404);
+
+  const [shop] = await db
+    .select()
+    .from(shops)
+    .where(eq(shops.id, product.shop_id))
+    .limit(1);
+  if (!shop || shop.owner_id !== req.user.id) {
+    throw new AppError("Non proprietaire", 403);
+  }
+
+  // Parse video_urls existant
+  let videos: string[] = [];
+  if (product.video_urls) {
+    try {
+      videos = JSON.parse(product.video_urls);
+      if (!Array.isArray(videos)) videos = [];
+    } catch {
+      videos = [];
+    }
+  }
+
+  // Limite de 3 videos
+  if (videos.length >= 3) {
+    throw new AppError(
+      "Maximum 3 videos par produit. Supprime-en une avant d'en ajouter une nouvelle.",
+      400
+    );
+  }
+
+  // Upload Cloudinary avec resource_type "video"
+  const url = await uploadToCloudinary(
+    req.file.buffer,
+    "ankucamp/products/videos",
+    {
+      resourceType: "video",
+    }
+  );
+
+  videos.push(url);
+
+  await db
+    .update(products)
+    .set({ video_urls: JSON.stringify(videos) })
+    .where(eq(products.id, productId));
+
+  return res.status(200).json({
+    success: true,
+    message: "Video ajoutee",
+    url,
+    video_urls: videos,
+  });
+}
+
+// ============================================================
+// DELETE /uploads/product-video
+// Body JSON : { product_id, url }
+// Retire une video du tableau video_urls.
+// ============================================================
+export async function deleteProductVideo(
+  req: AuthRequest,
+  res: Response
+) {
+  if (!req.user) throw new AppError("Non authentifie", 401);
+
+  const { product_id, url } = req.body as {
+    product_id?: number;
+    url?: string;
+  };
+
+  if (!product_id || !url) {
+    throw new AppError("product_id et url requis", 400);
+  }
+
+  const [product] = await db
+    .select()
+    .from(products)
+    .where(eq(products.id, product_id))
+    .limit(1);
+  if (!product) throw new AppError("Produit introuvable", 404);
+
+  const [shop] = await db
+    .select()
+    .from(shops)
+    .where(eq(shops.id, product.shop_id))
+    .limit(1);
+  if (!shop || shop.owner_id !== req.user.id) {
+    throw new AppError("Non proprietaire", 403);
+  }
+
+  let videos: string[] = [];
+  if (product.video_urls) {
+    try {
+      videos = JSON.parse(product.video_urls);
+      if (!Array.isArray(videos)) videos = [];
+    } catch {
+      videos = [];
+    }
+  }
+
+  videos = videos.filter((v) => v !== url);
+
+  await db
+    .update(products)
+    .set({ video_urls: videos.length > 0 ? JSON.stringify(videos) : null })
+    .where(eq(products.id, product_id));
+
+  return res.status(200).json({
+    success: true,
+    message: "Video supprimee",
+    video_urls: videos,
+  });
+}
+// ============================================================
+// POST /uploads/product-video-draft
+// Upload une video SANS product_id (avant creation du produit).
+// ============================================================
+export async function uploadProductVideoDraft(
+  req: AuthRequest,
+  res: Response
+) {
+  if (!req.user) throw new AppError("Non authentifie", 401);
+  if (!req.file) throw new AppError("Aucun fichier fourni", 400);
+
+  const url = await uploadToCloudinary(
+    req.file.buffer,
+    "ankucamp/products/videos",
+    {
+      resourceType: "video",
+    }
+  );
+
+  return res.status(200).json({
+    success: true,
+    message: "Video uploadee",
     url,
   });
 }

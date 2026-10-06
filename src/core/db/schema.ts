@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   pgTable,
   serial,
@@ -83,6 +84,7 @@ export const shops = pgTable("shops", {
   id: serial("id").primaryKey(),
   owner_id: integer("owner_id").notNull(),
   name: varchar("name", { length: 255 }).notNull(),
+  slug: varchar("slug", { length: 255 }).notNull().unique().default(sql`'shop-' || substr(md5(random()::text), 1, 12)`),
   description: text("description"),
   logo_url: text("logo_url"),
   banner_url: text("banner_url"),
@@ -113,9 +115,16 @@ export const products = pgTable("products", {
   name: varchar("name", { length: 255 }).notNull(),
   description: text("description"),
   image_url: text("image_url"),
+  video_urls: text("video_urls"),
   location: varchar("location", { length: 255 }),
   stock: integer("stock").default(0),
+  has_unlimited_stock: integer("has_unlimited_stock").default(0).notNull(),
   price: decimal("price", { precision: 10, scale: 2 }).notNull(),
+  delivery_pickup: integer("delivery_pickup").default(1).notNull(),
+  delivery_shipping: integer("delivery_shipping").default(0).notNull(),
+  delivery_meeting: integer("delivery_meeting").default(0).notNull(),
+  meeting_point_address: text("meeting_point_address"),
+  meeting_point_instructions: text("meeting_point_instructions"),
   created_at: timestamp("created_at").defaultNow(),
 });
 
@@ -343,6 +352,7 @@ export const posts = pgTable("posts", {
   visibility: varchar("visibility", { length: 20 }).default("public").notNull(),
   shared_from_post_id: integer("shared_from_post_id"),
   shared_event_id: integer("shared_event_id"),
+  shared_product_id: integer("shared_product_id"),
   share_comment: text("share_comment"),
   likes_count: integer("likes_count").default(0).notNull(),
   comments_count: integer("comments_count").default(0).notNull(),
@@ -539,7 +549,7 @@ export const articles = pgTable("articles", {
   id: serial("id").primaryKey(),
   author_id: integer("author_id").notNull(),
   title: varchar("title", { length: 255 }).notNull(),
-  slug: varchar("slug", { length: 255 }).notNull().unique(),
+  slug: varchar("slug", { length: 255 }).notNull().unique().default(sql`'shop-' || substr(md5(random()::text), 1, 12)`),
   excerpt: varchar("excerpt", { length: 500 }),
   content: text("content").notNull(),
   cover_url: text("cover_url"),

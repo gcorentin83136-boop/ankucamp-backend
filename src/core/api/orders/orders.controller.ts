@@ -11,9 +11,19 @@ import {
   deleteOrder,
   resendInvoiceService,
 } from "./orders.service";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { db } from "../../db";
-import { orders, payments } from "../../db/schema";
+import {
+  orders,
+  orderItems,
+  payments,
+  products,
+  users,
+} from "../../db/schema";
+import {
+  generateInvoicePdf,
+  generateInvoiceNumber,
+} from "../../emails/invoice";
 
 // ============================================================
 // LISTE
@@ -123,6 +133,7 @@ export async function downloadInvoice(req: AuthRequest, res: Response) {
     throw new AppError("ID commande invalide", 400);
   }
 
+  // 1. Commande
   const [order] = await db
     .select()
     .from(orders)
@@ -135,17 +146,101 @@ export async function downloadInvoice(req: AuthRequest, res: Response) {
     throw new AppError("Vous n'avez pas accès à cette facture", 403);
   }
 
+  // 2. Paiement (s'assure que la commande est payée)
   const [payment] = await db
     .select()
     .from(payments)
     .where(eq(payments.order_id, orderId))
     .limit(1);
 
-  if (!payment || !payment.invoice_url) {
-    throw new AppError("Facture non disponible pour cette commande", 404);
+  if (!payment) {
+    throw new AppError("Facture non disponible (commande non payée)", 404);
   }
 
-  return res.redirect(payment.invoice_url);
+  // 3. Articles + produits
+  const items = await db
+    .select()
+    .from(orderItems)
+    .where(eq(orderItems.order_id, orderId));
+
+  const productIds = [...new Set(items.map((i) => i.product_id))];
+  const productsFound =
+    productIds.length > 0
+      ? await db
+          .select({ id: products.id, name: products.name })
+          .from(products)
+          .where(inArray(products.id, productIds))
+      : [];
+
+  const productsMap = new Map(productsFound.map((p) => [p.id, p]));
+
+  // 4. Buyer + Seller
+  const [buyer] = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, order.buyer_id))
+    .limit(1);
+
+  const [seller] = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, order.seller_id))
+    .limit(1);
+
+  // 5. Calculs financiers
+  const totalPrice = Number(order.total_price);
+  const feeAmount = payment.application_fee_amount
+    ? Number(payment.application_fee_amount)
+    : 0;
+  const sellerAmount = payment.seller_amount
+    ? Number(payment.seller_amount)
+    : totalPrice - feeAmount;
+  const platformFeePercent =
+    totalPrice > 0 ? Math.round((feeAmount / totalPrice) * 1000) / 10 : 0;
+
+  // 6. Génération PDF
+  const pdfBuffer = await generateInvoicePdf({
+    invoiceNumber: generateInvoiceNumber(orderId),
+    orderId,
+    date: order.created_at ? new Date(order.created_at) : new Date(),
+    buyerName: buyer
+      ? `${buyer.first_name} ${buyer.last_name}`.trim()
+      : `Acheteur #${order.buyer_id}`,
+    buyerEmail: buyer?.email ?? "—",
+    sellerName: seller
+      ? `${seller.first_name} ${seller.last_name}`.trim()
+      : `Vendeur #${order.seller_id}`,
+    sellerEmail: seller?.email ?? "—",
+    sellerAddress: seller?.address ?? null,
+    items: items.map((i) => ({
+      productName:
+        productsMap.get(i.product_id)?.name ?? `Produit #${i.product_id}`,
+      quantity: i.quantity,
+      unitPrice: i.unit_price,
+    })),
+    totalPrice: order.total_price,
+    deliveryMethod:
+      order.delivery_method === "pickup"
+        ? "Retrait sur place"
+        : order.delivery_method === "shipping"
+        ? "Livraison"
+        : order.delivery_method,
+    deliveryAddress: order.delivery_address,
+    paymentIntentId: payment.stripe_payment_intent,
+    applicationFeeAmount: feeAmount.toFixed(2),
+    sellerAmount: sellerAmount.toFixed(2),
+    platformFeePercent,
+  });
+
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader(
+    "Content-Disposition",
+    `inline; filename="facture-anku-${orderId}.pdf"`
+  );
+  res.setHeader("Content-Length", pdfBuffer.length.toString());
+  res.setHeader("Cache-Control", "private, no-store");
+
+  return res.send(pdfBuffer);
 }
 
 // ============================================================
