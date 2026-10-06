@@ -1,4 +1,4 @@
-﻿import { eq, notInArray, inArray } from "drizzle-orm";
+import { eq, notInArray, inArray } from "drizzle-orm";
 import { db } from "../../db";
 import { products, shops, shopSettings, users } from "../../db/schema";
 import { AppError } from "../../errors/AppError";
@@ -25,7 +25,7 @@ async function assertShopOwner(shopId: number, userId: number) {
 
   if (!shop) throw new AppError("Boutique introuvable", 404);
   if (shop.owner_id !== userId) {
-    throw new AppError("Vous n'etes pas le proprietaire de cette boutique", 403);
+    throw new AppError("Vous n'êtes pas le propriétaire de cette boutique", 403);
   }
 
   return shop;
