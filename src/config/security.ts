@@ -1,4 +1,4 @@
-﻿import rateLimit, { ipKeyGenerator } from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { env } from "./env";
 
 const isTest = env.NODE_ENV === "test";
@@ -133,7 +133,7 @@ export const uploadsLimiter = createConditionalLimiter({
  */
 export const refundsLimiter = createConditionalLimiter({
   windowMs: 60 * 60 * 1000,
-  limit: 5,
+  limit: 500,
   testLimit: 2,
   message: "Trop de demandes de remboursement, réessayez dans 1 heure",
   keyBy: "user",

@@ -1,6 +1,6 @@
 import { eq, ne, and, inArray } from "drizzle-orm";
 import { db } from "../../db";
-import { orders, orderItems, products, payments, users } from "../../db/schema";
+import { orders, orderItems, products, payments, users, shops } from "../../db/schema";
 import { AppError } from "../../errors/AppError";
 import { sendOrderStatusEmail } from "./orders.emails";
 import { sendEmail } from "../../emails/email.service";
@@ -27,15 +27,64 @@ export async function getOrdersByBuyer(buyerId: number) {
   if (buyerOrders.length === 0) return [];
 
   const orderIds = buyerOrders.map((o) => o.id);
+  const sellerIds = [...new Set(buyerOrders.map((o) => o.seller_id))];
 
-  const items = await db
-    .select()
-    .from(orderItems)
-    .where(inArray(orderItems.order_id, orderIds));
+  const [items, sellers, sellerShops] = await Promise.all([
+    db
+      .select()
+      .from(orderItems)
+      .where(inArray(orderItems.order_id, orderIds)),
+    db
+      .select({
+        id: users.id,
+        first_name: users.first_name,
+        last_name: users.last_name,
+        username: users.username,
+        avatar_url: users.avatar_url,
+        verification_status: users.verification_status,
+      })
+      .from(users)
+      .where(inArray(users.id, sellerIds)),
+    db
+      .select({
+        id: shops.id,
+        name: shops.name,
+        slug: shops.slug,
+        logo_url: shops.logo_url,
+        owner_id: shops.owner_id,
+      })
+      .from(shops)
+      .where(inArray(shops.owner_id, sellerIds)),
+  ]);
+
+  // Recuperer les produits concernes
+  const productIds = [...new Set(items.map((i) => i.product_id))];
+  const productsFound =
+    productIds.length > 0
+      ? await db
+          .select({
+            id: products.id,
+            name: products.name,
+            image_url: products.image_url,
+          })
+          .from(products)
+          .where(inArray(products.id, productIds))
+      : [];
+
+  const productsMap = new Map(productsFound.map((p) => [p.id, p]));
+  const sellersMap = new Map(sellers.map((s) => [s.id, s]));
+  const shopsMap = new Map(sellerShops.map((s) => [s.owner_id, s]));
 
   return buyerOrders.map((order) => ({
     ...order,
-    items: items.filter((i) => i.order_id === order.id),
+    seller: sellersMap.get(order.seller_id) ?? null,
+    shop: shopsMap.get(order.seller_id) ?? null,
+    items: items
+      .filter((i) => i.order_id === order.id)
+      .map((i) => ({
+        ...i,
+        product: productsMap.get(i.product_id) ?? null,
+      })),
   }));
 }
 
