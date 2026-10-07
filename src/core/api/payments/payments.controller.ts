@@ -5,6 +5,8 @@ import { createCheckoutSchema } from "./payments.validation";
 import {
   createCheckoutSession,
   getPaymentsByUser,
+  getPaymentsBySeller,
+  generateSellerInvoicesPdf,
   getPaymentByOrder,
   handleStripeEvent,
   createConnectOnboardingLink,
@@ -111,4 +113,42 @@ export async function connectStatus(req: AuthRequest, res: Response) {
   const status = await getConnectStatus(req.user.id);
 
   return res.json({ success: true, ...status });
+}
+
+// ============================================================
+// GET /payments/seller/me — Commissions ANKU sur mes ventes
+// ============================================================
+export async function listSellerMine(req: AuthRequest, res: Response) {
+  if (!req.user) throw new AppError("Non authentifié", 401);
+
+  const list = await getPaymentsBySeller(req.user.id);
+  return res.json({ success: true, payments: list });
+}
+
+// ============================================================
+// GET /payments/seller/me/export — PDF récap factures
+// ============================================================
+export async function exportSellerInvoicesPdf(
+  req: AuthRequest,
+  res: Response
+) {
+  if (!req.user) throw new AppError("Non authentifié", 401);
+
+  const monthFilter =
+    typeof req.query.month === "string" ? req.query.month : undefined;
+
+  const buffer = await generateSellerInvoicesPdf(
+    req.user.id,
+    monthFilter
+  );
+
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader(
+    "Content-Disposition",
+    `inline; filename="mes-factures-anku.pdf"`
+  );
+  res.setHeader("Content-Length", buffer.length.toString());
+  res.setHeader("Cache-Control", "private, no-store");
+
+  return res.send(buffer);
 }

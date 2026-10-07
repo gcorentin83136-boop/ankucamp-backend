@@ -1,4 +1,5 @@
-import { eq } from "drizzle-orm";
+import PDFDocument from "pdfkit";
+import { eq , desc } from "drizzle-orm";
 import { db } from "../../db";
 import { payments, orders, orderItems, products, users } from "../../db/schema";
 import { AppError } from "../../errors/AppError";
@@ -239,6 +240,16 @@ export async function createCheckoutSession(
 // LECTURE
 // ============================================================
 
+export async function getPaymentsBySeller(sellerId: number) {
+  const rows = await db
+    .select()
+    .from(payments)
+    .where(eq(payments.seller_id, sellerId))
+    .orderBy(desc(payments.created_at));
+
+  return rows;
+}
+
 export async function getPaymentsByUser(userId: number) {
   return db.select().from(payments).where(eq(payments.user_id, userId));
 }
@@ -428,4 +439,257 @@ export async function handleStripeEvent(event: {
       break;
     }
   }
+}
+
+// ============================================================
+// GÉNÉRATION PDF — Mes factures ANKU (seller)
+// ============================================================
+export async function generateSellerInvoicesPdf(
+  sellerId: number,
+  monthFilter?: string
+): Promise<Buffer> {
+  // 1. Récupérer les paiements
+  let rows = await db
+    .select()
+    .from(payments)
+    .where(eq(payments.seller_id, sellerId))
+    .orderBy(desc(payments.created_at));
+
+  // Filtrer par mois si demandé (format YYYY-MM)
+  if (monthFilter && monthFilter !== "all") {
+    rows = rows.filter((r) => {
+      if (!r.created_at) return false;
+      const d = new Date(r.created_at);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      return key === monthFilter;
+    });
+  }
+
+  // 2. Calculs totaux
+  const totalTTC = rows.reduce(
+    (s, r) => s + parseFloat(r.amount_ttc ?? "0"),
+    0
+  );
+  const totalCommission = rows.reduce(
+    (s, r) => s + parseFloat(r.application_fee_amount ?? "0"),
+    0
+  );
+  const totalSeller = rows.reduce(
+    (s, r) => s + parseFloat(r.seller_amount ?? "0"),
+    0
+  );
+
+  // 3. Infos seller
+  const [seller] = await db
+    .select({
+      first_name: users.first_name,
+      last_name: users.last_name,
+      email: users.email,
+    })
+    .from(users)
+    .where(eq(users.id, sellerId))
+    .limit(1);
+
+  // 4. Générer PDF
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ size: "A4", margin: 40 });
+      const chunks: Buffer[] = [];
+
+      doc.on("data", (chunk: Buffer) => chunks.push(chunk));
+      doc.on("end", () => resolve(Buffer.concat(chunks)));
+      doc.on("error", reject);
+
+      const COLORS = {
+        primary: "#6366f1",
+        dark: "#1f2937",
+        gray: "#6b7280",
+        lightGray: "#f3f4f6",
+        border: "#e5e7eb",
+        red: "#dc2626",
+        green: "#059669",
+      };
+
+      // HEADER
+      doc
+        .fillColor(COLORS.primary)
+        .fontSize(24)
+        .font("Helvetica-Bold")
+        .text("ANKU", 40, 40);
+
+      doc
+        .fillColor(COLORS.dark)
+        .fontSize(16)
+        .font("Helvetica-Bold")
+        .text("Mes factures ANKU", 250, 45, {
+          align: "right",
+          width: 305,
+        });
+
+      doc
+        .fillColor(COLORS.gray)
+        .fontSize(9)
+        .font("Helvetica")
+        .text(
+          `Export du ${new Date().toLocaleDateString("fr-FR")}`,
+          250,
+          68,
+          { align: "right", width: 305 }
+        );
+
+      if (monthFilter && monthFilter !== "all") {
+        const [y, m] = monthFilter.split("-");
+        const lbl = new Date(parseInt(y), parseInt(m) - 1, 1).toLocaleDateString(
+          "fr-FR",
+          { month: "long", year: "numeric" }
+        );
+        doc.text(`Période : ${lbl}`, 250, 82, {
+          align: "right",
+          width: 305,
+        });
+      }
+
+      doc
+        .moveTo(40, 110)
+        .lineTo(555, 110)
+        .strokeColor(COLORS.primary)
+        .lineWidth(2)
+        .stroke();
+
+      // INFO VENDEUR
+      let y = 130;
+      doc
+        .fillColor(COLORS.gray)
+        .fontSize(9)
+        .font("Helvetica-Bold")
+        .text("VENDEUR", 40, y);
+
+      doc
+        .fillColor(COLORS.dark)
+        .fontSize(10)
+        .font("Helvetica")
+        .text(
+          seller ? `${seller.first_name} ${seller.last_name}` : `Seller #${sellerId}`,
+          40,
+          y + 15
+        )
+        .text(seller?.email ?? "—", 40, y + 30);
+
+      // RÉSUMÉ
+      doc
+        .fillColor(COLORS.gray)
+        .fontSize(9)
+        .font("Helvetica-Bold")
+        .text("RÉSUMÉ", 350, y);
+
+      doc
+        .fillColor(COLORS.dark)
+        .fontSize(10)
+        .font("Helvetica")
+        .text(`Ventes : ${rows.length}`, 350, y + 15)
+        .text(`CA total : ${totalTTC.toFixed(2)} €`, 350, y + 30)
+        .text(`Commission ANKU (2,5%) : ${totalCommission.toFixed(2)} €`, 350, y + 45)
+        .fillColor(COLORS.green)
+        .font("Helvetica-Bold")
+        .text(`Net vendeur : ${totalSeller.toFixed(2)} €`, 350, y + 60);
+
+      // TABLEAU
+      y += 100;
+
+      doc
+        .fillColor(COLORS.gray)
+        .fontSize(9)
+        .font("Helvetica-Bold")
+        .text("DÉTAIL DES VENTES", 40, y);
+
+      y += 20;
+
+      // Header tableau
+      doc.rect(40, y, 515, 25).fillColor(COLORS.lightGray).fill();
+
+      doc
+        .fillColor(COLORS.dark)
+        .fontSize(9)
+        .font("Helvetica-Bold")
+        .text("Commande", 50, y + 8)
+        .text("Date", 130, y + 8)
+        .text("Montant vente", 240, y + 8, { width: 90, align: "right" })
+        .text("Commission", 340, y + 8, { width: 90, align: "right" })
+        .text("Net vendeur", 440, y + 8, { width: 100, align: "right" });
+
+      y += 25;
+
+      // Lignes
+      doc.font("Helvetica").fontSize(9);
+
+      for (const r of rows) {
+        // Nouvelle page si on dépasse
+        if (y > 700) {
+          doc.addPage();
+          y = 50;
+        }
+
+        const fee = parseFloat(r.application_fee_amount ?? "0");
+        const sellerAmount = parseFloat(
+          r.seller_amount ?? String(parseFloat(r.amount_ttc) - fee)
+        );
+        const dateStr = r.created_at
+          ? new Date(r.created_at).toLocaleDateString("fr-FR", {
+              day: "2-digit",
+              month: "2-digit",
+              year: "numeric",
+            })
+          : "—";
+
+        doc
+          .fillColor(COLORS.dark)
+          .text(`#${r.order_id}`, 50, y + 6)
+          .fillColor(COLORS.gray)
+          .text(dateStr, 130, y + 6)
+          .fillColor(COLORS.dark)
+          .text(`${parseFloat(r.amount_ttc).toFixed(2)} €`, 240, y + 6, {
+            width: 90,
+            align: "right",
+          })
+          .fillColor(COLORS.red)
+          .text(`-${fee.toFixed(2)} €`, 340, y + 6, {
+            width: 90,
+            align: "right",
+          })
+          .fillColor(COLORS.green)
+          .font("Helvetica-Bold")
+          .text(`${sellerAmount.toFixed(2)} €`, 440, y + 6, {
+            width: 100,
+            align: "right",
+          })
+          .font("Helvetica");
+
+        doc
+          .moveTo(40, y + 22)
+          .lineTo(555, y + 22)
+          .strokeColor(COLORS.border)
+          .lineWidth(0.5)
+          .stroke();
+
+        y += 22;
+      }
+
+      // Footer
+      doc
+        .fillColor(COLORS.gray)
+        .fontSize(8)
+        .font("Helvetica")
+        .text(
+          `© ${new Date().getFullYear()} ANKU — Récapitulatif commissions`,
+          40,
+          780,
+          { align: "center", width: 515 }
+        );
+
+      doc.end();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erreur PDF";
+      reject(new AppError(`Échec génération PDF : ${message}`, 500));
+    }
+  });
 }

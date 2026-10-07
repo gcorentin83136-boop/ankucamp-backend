@@ -6,6 +6,8 @@ import {
   checkout,
   webhook,
   listMine,
+  listSellerMine,
+  exportSellerInvoicesPdf,
   getOneByOrder,
   onboardConnect,
   connectStatus,
@@ -25,6 +27,8 @@ router.post(
   asyncHandler(checkout)
 );
 router.get("/me", authMiddleware, asyncHandler(listMine));
+router.get("/seller/me/export", authMiddleware, asyncHandler(exportSellerInvoicesPdf));
+router.get("/seller/me", authMiddleware, asyncHandler(listSellerMine));
 router.get("/order/:orderId", authMiddleware, asyncHandler(getOneByOrder));
 
 // Stripe Connect (onboarding pro)
