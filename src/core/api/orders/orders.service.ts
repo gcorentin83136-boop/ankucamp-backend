@@ -1,4 +1,4 @@
-import { eq, inArray } from "drizzle-orm";
+import { eq, ne, and, inArray } from "drizzle-orm";
 import { db } from "../../db";
 import { orders, orderItems, products, payments, users } from "../../db/schema";
 import { AppError } from "../../errors/AppError";
@@ -300,6 +300,27 @@ export async function updateOrderStatus(
   } = {
     status: newStatus,
   };
+
+  // 🔒 Anti-doublon : un même n° de suivi ne peut pas être utilisé 2 fois
+  if (newStatus === "shipped" && trackingNumber) {
+    const [existing] = await db
+      .select({ id: orders.id })
+      .from(orders)
+      .where(
+        and(
+          eq(orders.tracking_number, trackingNumber),
+          ne(orders.id, orderId)
+        )
+      )
+      .limit(1);
+
+    if (existing) {
+      throw new AppError(
+        `Ce numéro de suivi est déjà utilisé par la commande #${existing.id}`,
+        409
+      );
+    }
+  }
 
   if (newStatus === "shipped" && trackingNumber !== undefined) {
     updates.tracking_number = trackingNumber;
