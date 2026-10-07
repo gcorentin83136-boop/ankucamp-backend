@@ -7,6 +7,7 @@ import {
   orderItems,
   products,
   users,
+  shops,
 } from "../../db/schema";
 import { AppError } from "../../errors/AppError";
 import { notifyNewReview } from "../../notifications/notifications.helper";
@@ -183,8 +184,12 @@ export async function getReviewsBySeller(
       id: reviews.id,
       rating: reviews.rating,
       comment: reviews.comment,
+      reply_text: reviews.reply_text,
+      replied_at: reviews.replied_at,
       created_at: reviews.created_at,
+      updated_at: reviews.updated_at,
       is_flagged: reviews.is_flagged,
+      flag_reason: reviews.flag_reason,
       product_id: reviews.product_id,
       product_name: products.name,
       author_id: reviews.author_id,
@@ -204,9 +209,36 @@ export async function getReviewsBySeller(
 
   const badgesMap = await getBadgesForUsers(rows.map((r) => r.author_id));
 
+  // Infos du seller + shop (pour afficher sa réponse)
+  const [sellerInfo] = await db
+    .select({
+      id: users.id,
+      first_name: users.first_name,
+      last_name: users.last_name,
+      username: users.username,
+      avatar_url: users.avatar_url,
+      verification_status: users.verification_status,
+    })
+    .from(users)
+    .where(eq(users.id, sellerId))
+    .limit(1);
+
+  const [shopInfo] = await db
+    .select({
+      id: shops.id,
+      name: shops.name,
+      logo_url: shops.logo_url,
+      slug: shops.slug,
+    })
+    .from(shops)
+    .where(eq(shops.owner_id, sellerId))
+    .limit(1);
+
   return rows.map((r) => ({
     ...r,
     author_badges: badgesMap.get(r.author_id) ?? [],
+    seller: sellerInfo ?? null,
+    shop: shopInfo ?? null,
   }));
 }
 
