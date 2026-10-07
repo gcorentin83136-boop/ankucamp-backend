@@ -156,13 +156,41 @@ export async function listAllPromoCodes(query: ListPromosQuery) {
   const conditions: any[] = [];
   if (active_only) conditions.push(eq(promoCodes.is_active, 1));
 
-  return db
+  const rows = await db
     .select()
     .from(promoCodes)
     .where(conditions.length > 0 ? and(...conditions) : sql`1=1`)
     .orderBy(desc(promoCodes.created_at))
     .limit(limit)
     .offset(offset);
+
+  // Enrichir avec le vendeur (si seller_id présent)
+  const sellerIds = [
+    ...new Set(rows.map((r) => r.seller_id).filter((id): id is number => !!id)),
+  ];
+
+  if (sellerIds.length === 0) {
+    return rows.map((r) => ({ ...r, seller: null }));
+  }
+
+  const sellersFound = await db
+    .select({
+      id: users.id,
+      first_name: users.first_name,
+      last_name: users.last_name,
+      username: users.username,
+      email: users.email,
+      avatar_url: users.avatar_url,
+    })
+    .from(users)
+    .where(inArray(users.id, sellerIds));
+
+  const sellersMap = new Map(sellersFound.map((s) => [s.id, s]));
+
+  return rows.map((r) => ({
+    ...r,
+    seller: r.seller_id ? sellersMap.get(r.seller_id) ?? null : null,
+  }));
 }
 
 export async function createPromoCode(
