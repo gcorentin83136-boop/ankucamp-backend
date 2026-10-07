@@ -403,7 +403,8 @@ export async function reportReview(
     .where(
       and(
         eq(reviewReports.review_id, reviewId),
-        eq(reviewReports.reporter_id, reporterId)
+        eq(reviewReports.reporter_id, reporterId),
+        eq(reviewReports.status, "pending")
       )
     )
     .limit(1);

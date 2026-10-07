@@ -12,6 +12,9 @@ import {
   resolveReport,
   dismissReport,
   getReportsStats,
+  listFlaggedReviews,
+  resolveFlaggedReview,
+  dismissFlaggedReview,
 } from "./reports.service";
 import { logAdminActionAsync } from "../audit/audit.helper";
 
@@ -107,5 +110,84 @@ export async function adminDismissReport(req: AuthRequest, res: Response) {
 
 export async function adminReportsStats(_req: AuthRequest, res: Response) {
   const result = await getReportsStats();
-  return res.json({ success: true, ...result });
+  return res.json({
+    success: true,
+    pending: result.stats.pending,
+    resolved: result.stats.resolved,
+    dismissed: result.stats.dismissed,
+    total: result.stats.total,
+    by_type: result.by_type,
+  });
+}
+
+// ============================================================
+// AVIS SIGNALÉS (is_flagged = 1)
+// ============================================================
+
+export async function adminListFlaggedReviews(
+  req: AuthRequest,
+  res: Response
+) {
+  const statusQuery = req.query.status;
+  const status =
+    typeof statusQuery === "string" &&
+    ["pending", "resolved", "dismissed", "all"].includes(statusQuery)
+      ? (statusQuery as "pending" | "resolved" | "dismissed" | "all")
+      : "pending";
+
+  const list = await listFlaggedReviews(status);
+  return res.json({ success: true, count: list.length, reviews: list });
+}
+
+export async function adminResolveReview(
+  req: AuthRequest,
+  res: Response
+) {
+  if (!req.user) throw new AppError("Non authentifié", 401);
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) throw new AppError("ID invalide", 400);
+
+  const deleteContent =
+    typeof req.body?.delete_content === "boolean"
+      ? req.body.delete_content
+      : false;
+
+  const result = await resolveFlaggedReview(id, req.user.id, deleteContent);
+
+  logAdminActionAsync({
+    adminId: req.user.id,
+    action: "review_resolve",
+    targetType: "review",
+    targetId: id,
+    description: `Avis #${id} résolu${result.content_deleted ? " (supprimé)" : ""}`,
+    metadata: { content_deleted: result.content_deleted },
+    ipAddress: req.ip ?? null,
+    userAgent: req.headers["user-agent"] ?? null,
+  });
+
+  return res.json(result);
+}
+
+export async function adminDismissReview(
+  req: AuthRequest,
+  res: Response
+) {
+  if (!req.user) throw new AppError("Non authentifié", 401);
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) throw new AppError("ID invalide", 400);
+
+  const result = await dismissFlaggedReview(id, req.user.id);
+
+  logAdminActionAsync({
+    adminId: req.user.id,
+    action: "review_dismiss",
+    targetType: "review",
+    targetId: id,
+    description: `Avis #${id} rejeté (conservé)`,
+    metadata: null,
+    ipAddress: req.ip ?? null,
+    userAgent: req.headers["user-agent"] ?? null,
+  });
+
+  return res.json(result);
 }

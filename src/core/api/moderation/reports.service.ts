@@ -6,6 +6,7 @@ import {
   posts,
   postComments,
   reviews,
+  reviewReports,
   products,
   shops,
   messages,
@@ -337,4 +338,182 @@ export async function getReportsStats() {
   }
 
   return { stats, by_type: byType };
+}
+
+// ============================================================
+// MODÉRATION DES AVIS SIGNALÉS
+// ============================================================
+
+export async function listFlaggedReviews(
+  status: "pending" | "resolved" | "dismissed" | "all" = "pending"
+) {
+  const conditions: any[] = [];
+  if (status !== "all") {
+    conditions.push(eq(reviewReports.status, status));
+  }
+
+  const rows = await db
+    .select({
+      // Report
+      report_id: reviewReports.id,
+      report_reason: reviewReports.reason,
+      report_status: reviewReports.status,
+      report_created_at: reviewReports.created_at,
+      admin_note: reviewReports.admin_note,
+      resolved_at: reviewReports.resolved_at,
+      reporter_id: reviewReports.reporter_id,
+      // Review (peut etre null si supprime)
+      review_id: reviews.id,
+      product_id: reviews.product_id,
+      product_name: products.name,
+      rating: reviews.rating,
+      comment: reviews.comment,
+      author_id: reviews.author_id,
+      author_first_name: users.first_name,
+      author_last_name: users.last_name,
+      author_username: users.username,
+      author_avatar_url: users.avatar_url,
+      seller_id: reviews.seller_id,
+      is_flagged: reviews.is_flagged,
+      flag_reason: reviews.flag_reason,
+      review_created_at: reviews.created_at,
+    })
+    .from(reviewReports)
+    .leftJoin(reviews, eq(reviews.id, reviewReports.review_id))
+    .leftJoin(products, eq(products.id, reviews.product_id))
+    .leftJoin(users, eq(users.id, reviews.author_id))
+    .where(conditions.length > 0 ? and(...conditions) : sql`true`)
+    .orderBy(desc(reviewReports.created_at));
+
+  return rows;
+}
+
+export async function resolveFlaggedReview(
+  reportId: number,
+  adminId: number,
+  deleteContentFlag: boolean,
+  adminNote: string | null = null
+) {
+  const [report] = await db
+    .select()
+    .from(reviewReports)
+    .where(eq(reviewReports.id, reportId))
+    .limit(1);
+
+  if (!report) throw new AppError("Signalement introuvable", 404);
+  if (report.status !== "pending") {
+    throw new AppError("Ce signalement a deja ete traite", 409);
+  }
+
+  // Si on supprime le contenu
+  if (deleteContentFlag) {
+    // Recuperer l'avis pour notifier
+    const [review] = await db
+      .select()
+      .from(reviews)
+      .where(eq(reviews.id, report.review_id))
+      .limit(1);
+
+    if (review) {
+      await db.delete(reviews).where(eq(reviews.id, report.review_id));
+      await notifyUser(
+        review.author_id,
+        "Avis supprime",
+        "Ton avis a ete retire par la moderation (non conforme aux CGU).",
+        null
+      );
+    }
+  } else {
+    // Retirer le flag sur l'avis
+    await db
+      .update(reviews)
+      .set({ is_flagged: 0, flag_reason: null })
+      .where(eq(reviews.id, report.review_id));
+  }
+
+  // Marquer le report comme resolu (on garde la trace)
+  await db
+    .update(reviewReports)
+    .set({
+      status: "resolved",
+      admin_id: adminId,
+      admin_note: adminNote,
+      resolved_at: new Date(),
+    })
+    .where(eq(reviewReports.id, reportId));
+
+  // Notifier le vendeur qui a signale
+  await notifyUser(
+    report.reporter_id,
+    "Signalement traite",
+    deleteContentFlag
+      ? "Merci, ton signalement a ete traite et l'avis a ete supprime."
+      : "Merci, ton signalement a ete traite.",
+    null
+  );
+
+  return { success: true, content_deleted: deleteContentFlag };
+}
+
+export async function dismissFlaggedReview(
+  reportId: number,
+  adminId: number,
+  adminNote: string | null = null
+) {
+  const [report] = await db
+    .select()
+    .from(reviewReports)
+    .where(eq(reviewReports.id, reportId))
+    .limit(1);
+
+  if (!report) throw new AppError("Signalement introuvable", 404);
+  if (report.status !== "pending") {
+    throw new AppError("Ce signalement a deja ete traite", 409);
+  }
+
+  // Retirer le flag sur l'avis (l'avis est conserve)
+  await db
+    .update(reviews)
+    .set({ is_flagged: 0, flag_reason: null })
+    .where(eq(reviews.id, report.review_id));
+
+  // Marquer le report comme rejete (on garde la trace)
+  await db
+    .update(reviewReports)
+    .set({
+      status: "dismissed",
+      admin_id: adminId,
+      admin_note: adminNote,
+      resolved_at: new Date(),
+    })
+    .where(eq(reviewReports.id, reportId));
+
+  // Notifier le vendeur
+  await notifyUser(
+    report.reporter_id,
+    "Signalement examine",
+    "Apres examen, ton signalement n'a pas ete retenu.",
+    null
+  );
+
+  return { success: true };
+}
+
+export async function getFlaggedReviewsCounts() {
+  const rows = await db
+    .select({
+      status: reviewReports.status,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(reviewReports)
+    .groupBy(reviewReports.status);
+
+  const counts = { pending: 0, resolved: 0, dismissed: 0, total: 0 };
+  for (const r of rows) {
+    if (r.status === "pending") counts.pending = r.count;
+    if (r.status === "resolved") counts.resolved = r.count;
+    if (r.status === "dismissed") counts.dismissed = r.count;
+    counts.total += r.count;
+  }
+  return counts;
 }

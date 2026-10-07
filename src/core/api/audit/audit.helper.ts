@@ -11,6 +11,8 @@ export const AUDIT_ACTIONS = [
   "kyc_reject",
   "report_resolve",
   "report_dismiss",
+  "review_resolve",
+  "review_dismiss",
   "refund_approve",
   "refund_reject",
   "badge_grant",

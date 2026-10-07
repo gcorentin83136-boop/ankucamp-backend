@@ -183,6 +183,10 @@ export const reviewReports = pgTable("review_reports", {
   review_id: integer("review_id").notNull(),
   reporter_id: integer("reporter_id").notNull(),
   reason: text("reason").notNull(),
+  status: varchar("status", { length: 20 }).default("pending").notNull(),
+  admin_id: integer("admin_id"),
+  admin_note: text("admin_note"),
+  resolved_at: timestamp("resolved_at"),
   created_at: timestamp("created_at").defaultNow(),
 });
 
