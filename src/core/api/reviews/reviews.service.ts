@@ -14,6 +14,7 @@ import { getBadgesForUsers, getUserBadges } from "../badges/badges.service";
 import type {
   CreateReviewInput,
   ListReviewsQuery,
+  UpdateReviewInput,
 } from "./reviews.validation";
 
 // ============================================================
@@ -479,4 +480,69 @@ export async function getBulkSellerRatings(
   }
 
   return result;
+}
+
+// ============================================================
+// RÉPONSE DU VENDEUR À UN AVIS
+// ============================================================
+export async function replyToReview(
+  reviewId: number,
+  sellerId: number,
+  replyText: string
+) {
+  const [review] = await db
+    .select()
+    .from(reviews)
+    .where(eq(reviews.id, reviewId))
+    .limit(1);
+
+  if (!review) throw new AppError("Avis introuvable", 404);
+
+  if (review.seller_id !== sellerId) {
+    throw new AppError("Tu ne peux répondre qu'aux avis de tes clients", 403);
+  }
+
+  const [updated] = await db
+    .update(reviews)
+    .set({
+      reply_text: replyText,
+      replied_at: new Date(),
+    })
+    .where(eq(reviews.id, reviewId))
+    .returning();
+
+  return updated;
+}
+
+// ============================================================
+// MODIFICATION D'UN AVIS (par l'auteur)
+// ============================================================
+export async function updateReview(
+  reviewId: number,
+  authorId: number,
+  input: UpdateReviewInput
+) {
+  const [review] = await db
+    .select()
+    .from(reviews)
+    .where(eq(reviews.id, reviewId))
+    .limit(1);
+
+  if (!review) throw new AppError("Avis introuvable", 404);
+
+  if (review.author_id !== authorId) {
+    throw new AppError("Tu ne peux modifier que tes propres avis", 403);
+  }
+
+  const dataToUpdate: any = { updated_at: new Date() };
+  if (input.rating !== undefined) dataToUpdate.rating = input.rating;
+  if (input.comment !== undefined) dataToUpdate.comment = input.comment;
+
+  const [updated] = await db
+    .update(reviews)
+    .set(dataToUpdate)
+    .where(eq(reviews.id, reviewId))
+    .returning();
+
+  return updated;
 }

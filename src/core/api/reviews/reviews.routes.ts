@@ -9,6 +9,8 @@ import {
   listMyReviews,
   remove,
   report,
+  reply,
+  update,
 } from "./reviews.controller";
 
 const router = Router();
@@ -37,6 +39,10 @@ router.get("/me", authMiddleware, asyncHandler(listMyReviews));
 router.get("/seller/me", authMiddleware, asyncHandler(listSellerReviews));
 
 // Signaler un avis (en tant que vendeur)
+router.post("/:id/reply", authMiddleware, asyncHandler(reply));
+
+router.put("/:id", authMiddleware, asyncHandler(update));
+
 router.post("/:id/report", authMiddleware, asyncHandler(report));
 
 // Supprimer son avis (en tant qu'auteur)

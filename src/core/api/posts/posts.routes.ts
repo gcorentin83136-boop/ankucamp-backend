@@ -19,6 +19,7 @@ import {
   removeComment,
   share,
   shareEventCtrl,
+  shareArticleCtrl,
   likeEvent,
 } from "./posts.controller";
 
@@ -33,6 +34,12 @@ router.get("/me", authMiddleware, asyncHandler(mine));
 router.post("/", authMiddleware, asyncHandler(create));
 
 // Partager un événement
+router.post(
+  "/share-article/:articleId",
+  authMiddleware,
+  asyncHandler(shareArticleCtrl)
+);
+
 router.post(
   "/share-event/:eventId",
   authMiddleware,

@@ -5,6 +5,8 @@ import {
   createReviewSchema,
   reportReviewSchema,
   listReviewsQuerySchema,
+  replyReviewSchema,
+  updateReviewSchema,
 } from "./reviews.validation";
 import {
   createReview,
@@ -14,6 +16,8 @@ import {
   getProductRatingStats,
   deleteReview,
   reportReview,
+  replyToReview,
+  updateReview,
 } from "./reviews.service";
 
 // ============================================================
@@ -155,5 +159,55 @@ export async function report(req: AuthRequest, res: Response) {
   return res.json({
     success: true,
     message: "Avis signalé. Il sera masqué en attendant vérification.",
+  });
+}
+
+// ============================================================
+// POST /reviews/:id/reply - Réponse vendeur
+// ============================================================
+export async function reply(req: AuthRequest, res: Response) {
+  if (!req.user) throw new AppError("Non authentifié", 401);
+
+  const reviewId = Number(req.params.id);
+  if (isNaN(reviewId) || reviewId <= 0) {
+    throw new AppError("ID avis invalide", 400);
+  }
+
+  const parsed = replyReviewSchema.safeParse(req.body);
+  if (!parsed.success) {
+    throw new AppError("Données invalides", 400, parsed.error.flatten().fieldErrors);
+  }
+
+  const review = await replyToReview(reviewId, req.user.id, parsed.data.reply_text);
+
+  return res.json({
+    success: true,
+    message: "Réponse publiée",
+    review,
+  });
+}
+
+// ============================================================
+// PUT /reviews/:id - Modifier son avis (auteur)
+// ============================================================
+export async function update(req: AuthRequest, res: Response) {
+  if (!req.user) throw new AppError("Non authentifié", 401);
+
+  const reviewId = Number(req.params.id);
+  if (isNaN(reviewId) || reviewId <= 0) {
+    throw new AppError("ID avis invalide", 400);
+  }
+
+  const parsed = updateReviewSchema.safeParse(req.body);
+  if (!parsed.success) {
+    throw new AppError("Données invalides", 400, parsed.error.flatten().fieldErrors);
+  }
+
+  const review = await updateReview(reviewId, req.user.id, parsed.data);
+
+  return res.json({
+    success: true,
+    message: "Avis modifié",
+    review,
   });
 }

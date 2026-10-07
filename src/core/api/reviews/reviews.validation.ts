@@ -50,3 +50,23 @@ export const listReviewsQuerySchema = z.object({
 });
 
 export type ListReviewsQuery = z.infer<typeof listReviewsQuerySchema>;
+
+// ============================================================
+// RÉPONSE VENDEUR (à un avis)
+// ============================================================
+export const replyReviewSchema = z.object({
+  reply_text: z
+    .string()
+    .min(2, "La réponse doit faire au moins 2 caractères")
+    .max(2000, "La réponse est trop longue"),
+});
+export type ReplyReviewInput = z.infer<typeof replyReviewSchema>;
+
+// ============================================================
+// MODIFICATION D'UN AVIS (par le buyer)
+// ============================================================
+export const updateReviewSchema = z.object({
+  rating: z.number().int().min(1).max(5).optional(),
+  comment: z.string().max(2000).optional().nullable(),
+});
+export type UpdateReviewInput = z.infer<typeof updateReviewSchema>;

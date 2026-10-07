@@ -15,6 +15,7 @@ import {
   uploadProductImageDraft,
   uploadProductVideo,
   uploadEventCover,
+  uploadCommentMedia,
   uploadProductVideoDraft,
   deleteProductVideo,
   uploadPostMedia,
@@ -32,6 +33,13 @@ router.post(
   authMiddleware,
   upload.single("file"),
   asyncHandler(uploadEventCover)
+);
+
+router.post(
+  "/comment-media",
+  authMiddleware,
+  upload.single("file"),
+  asyncHandler(uploadCommentMedia)
 );
 
 // Rate limiting : 10 uploads/min par user

@@ -13,6 +13,13 @@ import {
   remove,
   like,
 } from "./articles.controller";
+import {
+  listComments,
+  createComment,
+  updateComment,
+  removeComment,
+  reactComment,
+} from "./articles.comments.controller";
 
 const router = Router();
 
@@ -20,6 +27,33 @@ const router = Router();
 router.get("/", authOptionalMiddleware, asyncHandler(list));
 router.get("/me", authMiddleware, asyncHandler(myArticles));
 router.post("/", authMiddleware, asyncHandler(create));
+
+// COMMENTS (routes statiques AVANT /:slug)
+router.get(
+  "/:articleId/comments",
+  authOptionalMiddleware,
+  asyncHandler(listComments)
+);
+router.post(
+  "/:articleId/comments",
+  authMiddleware,
+  asyncHandler(createComment)
+);
+router.put(
+  "/comments/:commentId",
+  authMiddleware,
+  asyncHandler(updateComment)
+);
+router.delete(
+  "/comments/:commentId",
+  authMiddleware,
+  asyncHandler(removeComment)
+);
+router.post(
+  "/comments/:commentId/reactions",
+  authMiddleware,
+  asyncHandler(reactComment)
+);
 
 // DYNAMIQUES
 router.get("/:slug", authOptionalMiddleware, asyncHandler(getBySlug));

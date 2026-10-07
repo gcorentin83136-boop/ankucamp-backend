@@ -167,9 +167,12 @@ export const reviews = pgTable("reviews", {
   seller_id: integer("seller_id").notNull(),
   rating: integer("rating").notNull(),
   comment: text("comment"),
+  reply_text: text("reply_text"),
+  replied_at: timestamp("replied_at"),
   is_flagged: integer("is_flagged").default(0).notNull(),
   flag_reason: text("flag_reason"),
   created_at: timestamp("created_at").defaultNow(),
+  updated_at: timestamp("updated_at").defaultNow(),
 });
 
 // ========================
@@ -353,6 +356,7 @@ export const posts = pgTable("posts", {
   shared_from_post_id: integer("shared_from_post_id"),
   shared_event_id: integer("shared_event_id"),
   shared_product_id: integer("shared_product_id"),
+  shared_article_id: integer("shared_article_id"),
   share_comment: text("share_comment"),
   likes_count: integer("likes_count").default(0).notNull(),
   comments_count: integer("comments_count").default(0).notNull(),
@@ -373,6 +377,7 @@ export const postComments = pgTable("post_comments", {
   post_id: integer("post_id").notNull(),
   author_id: integer("author_id").notNull(),
   content: text("content").notNull(),
+  media_url: text("media_url"),
   parent_comment_id: integer("parent_comment_id"),
   created_at: timestamp("created_at").defaultNow(),
 });
@@ -561,6 +566,8 @@ export const articles = pgTable("articles", {
   likes_count: integer("likes_count").default(0).notNull(),
   created_at: timestamp("created_at").defaultNow(),
   updated_at: timestamp("updated_at").defaultNow(),
+  visibility: varchar("visibility", { length: 20 }).default("public").notNull(),
+  // 'public' | 'friends' | 'followers' | 'private'
 });
 
 // ========================
@@ -570,6 +577,30 @@ export const articleLikes = pgTable("article_likes", {
   id: serial("id").primaryKey(),
   article_id: integer("article_id").notNull(),
   user_id: integer("user_id").notNull(),
+  created_at: timestamp("created_at").defaultNow(),
+});
+// ========================
+// ARTICLE COMMENTS (avec réponses imbriquées + media)
+// ========================
+export const articleComments = pgTable("article_comments", {
+  id: serial("id").primaryKey(),
+  article_id: integer("article_id").notNull(),
+  author_id: integer("author_id").notNull(),
+  content: text("content").notNull(),
+  media_url: text("media_url"),
+  parent_comment_id: integer("parent_comment_id"),
+  created_at: timestamp("created_at").defaultNow(),
+  updated_at: timestamp("updated_at").defaultNow(),
+});
+
+// ========================
+// ARTICLE COMMENT REACTIONS (emoji)
+// ========================
+export const articleCommentReactions = pgTable("article_comment_reactions", {
+  id: serial("id").primaryKey(),
+  comment_id: integer("comment_id").notNull(),
+  user_id: integer("user_id").notNull(),
+  emoji: varchar("emoji", { length: 10 }).notNull(),
   created_at: timestamp("created_at").defaultNow(),
 });
 

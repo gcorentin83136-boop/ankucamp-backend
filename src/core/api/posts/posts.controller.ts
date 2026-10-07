@@ -24,6 +24,7 @@ import {
   deleteComment,
   sharePost,
   shareEvent,
+  shareArticle,
   toggleEventLike,
 } from "./posts.service";
 
@@ -248,4 +249,28 @@ export async function likeEvent(req: AuthRequest, res: Response) {
     liked: result.liked,
     likes_count: result.likes_count,
   });
+}
+
+// ============================================================
+// PARTAGER UN ARTICLE (POST /posts/share-article/:articleId)
+// ============================================================
+export async function shareArticleCtrl(
+  req: AuthRequest,
+  res: Response
+) {
+  if (!req.user) throw new AppError("Non authentifié", 401);
+
+  const articleId = parseId(req.params.articleId);
+
+  const parsed = shareEventSchema.safeParse(req.body);
+  if (!parsed.success) {
+    throw new AppError(
+      "Données invalides",
+      400,
+      parsed.error.flatten().fieldErrors
+    );
+  }
+
+  const post = await shareArticle(articleId, req.user.id, parsed.data);
+  return res.status(201).json({ success: true, post });
 }

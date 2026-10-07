@@ -9,6 +9,7 @@ import {
   friendships,
   events,
   eventLikes,
+  articles,
 } from "../../db/schema";
 import { AppError } from "../../errors/AppError";
 import {
@@ -811,4 +812,34 @@ export async function toggleEventLike(eventId: number, userId: number) {
 
     return { liked: true, likes_count: countRow?.count ?? 0 };
   }
+}
+
+// ============================================================
+// PARTAGER UN ARTICLE EN POST
+// ============================================================
+export async function shareArticle(
+  articleId: number,
+  userId: number,
+  input: ShareEventInput
+) {
+  const [article] = await db
+    .select()
+    .from(articles)
+    .where(eq(articles.id, articleId))
+    .limit(1);
+
+  if (!article) throw new AppError("Article introuvable", 404);
+
+  const [created] = await db
+    .insert(posts)
+    .values({
+      author_id: userId,
+      content: input.share_comment ?? null,
+      visibility: input.visibility ?? "public",
+      shared_article_id: article.id,
+      share_comment: input.share_comment ?? null,
+    })
+    .returning();
+
+  return enrichPost(created, userId);
 }

@@ -219,6 +219,7 @@ export async function createArticle(
       tags: input.tags.length > 0 ? JSON.stringify(input.tags) : null,
       category: input.category,
       status: input.status,
+      visibility: input.visibility ?? "public",
       published_at: input.status === "published" ? new Date() : null,
     })
     .returning();
@@ -259,6 +260,10 @@ export async function updateArticle(
 
   if (input.status === "published" && !article.published_at) {
     dataToUpdate.published_at = new Date();
+  }
+
+  if (input.visibility !== undefined) {
+    dataToUpdate.visibility = input.visibility;
   }
 
   const [updated] = await db

@@ -12,6 +12,14 @@ export type ArticleCategory = (typeof ARTICLE_CATEGORIES)[number];
 export const ARTICLE_STATUSES = ["draft", "published", "archived"] as const;
 export type ArticleStatus = (typeof ARTICLE_STATUSES)[number];
 
+export const ARTICLE_VISIBILITIES = [
+  "public",
+  "friends",
+  "followers",
+  "private",
+] as const;
+export type ArticleVisibility = (typeof ARTICLE_VISIBILITIES)[number];
+
 export const createArticleSchema = z.object({
   title: z.string().min(3).max(255),
   excerpt: z.string().max(500).optional().nullable(),
@@ -23,6 +31,7 @@ export const createArticleSchema = z.object({
     .default([]),
   category: z.enum(ARTICLE_CATEGORIES),
   status: z.enum(["draft", "published"]).default("published"),
+  visibility: z.enum(ARTICLE_VISIBILITIES).default("public"),
 });
 export type CreateArticleInput = z.infer<typeof createArticleSchema>;
 

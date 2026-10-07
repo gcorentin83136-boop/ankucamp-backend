@@ -411,3 +411,30 @@ export async function uploadEventCover(
     url,
   });
 }
+
+
+// ============================================================
+// POST /uploads/comment-media
+// Upload une image/GIF pour un commentaire (article ou post)
+// ============================================================
+export async function uploadCommentMedia(
+  req: AuthRequest,
+  res: Response
+) {
+  if (!req.user) throw new AppError("Non authentifié", 401);
+  if (!req.file) throw new AppError("Aucun fichier fourni", 400);
+
+  const url = await uploadToCloudinary(
+    req.file.buffer,
+    "ankucamp/comments",
+    {
+      resourceType: "image",
+    }
+  );
+
+  return res.status(200).json({
+    success: true,
+    message: "Média uploadé",
+    url,
+  });
+}
