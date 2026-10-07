@@ -69,8 +69,8 @@ describe("audit validation", () => {
   });
 
   describe("constantes", () => {
-    it("19 actions d'audit", () => {
-      expect(AUDIT_ACTIONS.length).toBe(19);
+    it("21 actions d'audit", () => {
+      expect(AUDIT_ACTIONS.length).toBe(21);
       expect(AUDIT_ACTIONS).toContain("kyc_approve");
       expect(AUDIT_ACTIONS).toContain("report_resolve");
       expect(AUDIT_ACTIONS).toContain("badge_grant");

@@ -110,13 +110,17 @@ export async function adminDismissReport(req: AuthRequest, res: Response) {
 
 export async function adminReportsStats(_req: AuthRequest, res: Response) {
   const result = await getReportsStats();
+
   return res.json({
     success: true,
+    // Format aplati (utilisé par Admin/Moderation.tsx)
     pending: result.stats.pending,
     resolved: result.stats.resolved,
     dismissed: result.stats.dismissed,
     total: result.stats.total,
     by_type: result.by_type,
+    // Format imbriqué (rétrocompatibilité + tests)
+    stats: result.stats,
   });
 }
 
