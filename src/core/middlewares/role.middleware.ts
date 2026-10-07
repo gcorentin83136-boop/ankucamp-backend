@@ -1,4 +1,4 @@
-﻿import { Response, NextFunction } from "express";
+import { Response, NextFunction } from "express";
 import { eq } from "drizzle-orm";
 import { AuthRequest } from "./auth.middleware";
 import { db } from "../db";
@@ -40,6 +40,11 @@ export function requireRole(...allowedRoles: string[]) {
           success: false,
           message: "Compte désactivé. Reconnecte-toi pour le réactiver.",
         });
+      }
+
+      // 🔑 Les admins bypass toutes les restrictions de rôle
+      if (user.role === "admin") {
+        return next();
       }
 
       if (!allowedRoles.includes(user.role)) {
