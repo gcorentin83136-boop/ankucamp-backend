@@ -13,6 +13,7 @@ import {
   getEventsNearby,
   getEventById,
   getMyEvents,
+  getEventsFeed,
   getEventRegistrations,
   createEvent,
   updateEvent,
@@ -75,6 +76,12 @@ export async function getOne(req: Request, res: Response) {
 export async function myEvents(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifié", 401);
   const list = await getMyEvents(req.user.id);
+  return res.json({ success: true, count: list.length, events: list });
+}
+
+export async function feedEvents(req: AuthRequest, res: Response) {
+  if (!req.user) throw new AppError("Non authentifié", 401);
+  const list = await getEventsFeed(req.user.id);
   return res.json({ success: true, count: list.length, events: list });
 }
 

@@ -261,6 +261,22 @@ export async function getMyEvents(organizerId: number) {
   return Promise.all(rows.map((e) => enrichEvent(e, organizerId)));
 }
 
+/**
+ * Feed événements : mes événements + ceux de mes amis.
+ */
+export async function getEventsFeed(userId: number) {
+  const friendIds = await getFriendIds(userId);
+  const organizerIds = [...new Set([userId, ...friendIds])];
+
+  const rows = await db
+    .select()
+    .from(events)
+    .where(inArray(events.organizer_id, organizerIds))
+    .orderBy(desc(events.start_at));
+
+  return Promise.all(rows.map((e) => enrichEvent(e, userId)));
+}
+
 export async function getEventRegistrations(
   eventId: number,
   organizerId: number

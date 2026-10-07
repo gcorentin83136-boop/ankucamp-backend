@@ -384,3 +384,30 @@ export async function uploadProductVideoDraft(
     url,
   });
 }
+
+
+// ============================================================
+// POST /uploads/event-cover
+// Upload une image de couverture d'événement
+// ============================================================
+export async function uploadEventCover(
+  req: AuthRequest,
+  res: Response
+) {
+  if (!req.user) throw new AppError("Non authentifié", 401);
+  if (!req.file) throw new AppError("Aucun fichier fourni", 400);
+
+  const url = await uploadToCloudinary(
+    req.file.buffer,
+    "ankucamp/events/covers",
+    {
+      resourceType: "image",
+    }
+  );
+
+  return res.status(200).json({
+    success: true,
+    message: "Image uploadée",
+    url,
+  });
+}

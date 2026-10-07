@@ -14,6 +14,7 @@ import {
   uploadProductImage,
   uploadProductImageDraft,
   uploadProductVideo,
+  uploadEventCover,
   uploadProductVideoDraft,
   deleteProductVideo,
   uploadPostMedia,
@@ -21,6 +22,17 @@ import {
 } from "./uploads.controller";
 
 const router = Router();
+
+// ============================================================
+// ROUTES D'UPLOAD
+// ============================================================
+
+router.post(
+  "/event-cover",
+  authMiddleware,
+  upload.single("file"),
+  asyncHandler(uploadEventCover)
+);
 
 // Rate limiting : 10 uploads/min par user
 router.use(uploadsLimiter);
