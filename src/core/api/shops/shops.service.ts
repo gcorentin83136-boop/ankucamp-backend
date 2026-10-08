@@ -1,6 +1,6 @@
 import { eq, notInArray, and, isNotNull, sql } from "drizzle-orm";
 import { db } from "../../db";
-import { shops, shopSettings, users } from "../../db/schema";
+import { shops, shopSettings, users, products, follows } from "../../db/schema";
 import { AppError } from "../../errors/AppError";
 import { getBadgesForUsers, getUserBadges } from "../badges/badges.service";
 import {
@@ -50,10 +50,23 @@ async function enrichShop(
     ? ratingsMap.get(owner.id) ?? { average: 0, count: 0 }
     : await getSellerGlobalRating(owner.id);
 
+  // Enrichissement : produits + followers
+  const [productsCountRow] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(products)
+    .where(eq(products.shop_id, shop.id));
+
+  const [followersCountRow] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(follows)
+    .where(eq(follows.shop_id, shop.id));
+
   return {
     ...shop,
     latitude: shop.latitude !== null ? Number(shop.latitude) : null,
     longitude: shop.longitude !== null ? Number(shop.longitude) : null,
+    products_count: productsCountRow?.count ?? 0,
+    followers_count: followersCountRow?.count ?? 0,
     owner: { ...owner, badges, rating },
   };
 }
