@@ -342,12 +342,29 @@ describe("Orders module", () => {
       expect(res.body.order.status).toBe("cancelled");
     });
 
-    it("refuse d'annuler une commande déjà confirmée (400)", async () => {
+    it("autorise l'annulation d'une commande confirmée (200)", async () => {
       const { seller, buyer } = await setupSellerAndBuyer();
       const order = await createOrder({
         buyer_id: buyer.id,
         seller_id: seller.id,
         status: "confirmed",
+      });
+
+      const res = await request(app)
+        .put(`/orders/${order.id}/status`)
+        .set("Authorization", buyer.authorization)
+        .send({ status: "cancelled" });
+
+      expect(res.status).toBe(200);
+      expect(res.body.order.status).toBe("cancelled");
+    });
+
+    it("refuse d'annuler une commande expédiée (400)", async () => {
+      const { seller, buyer } = await setupSellerAndBuyer();
+      const order = await createOrder({
+        buyer_id: buyer.id,
+        seller_id: seller.id,
+        status: "shipped",
       });
 
       const res = await request(app)
