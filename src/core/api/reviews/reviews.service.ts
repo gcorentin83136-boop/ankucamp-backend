@@ -163,6 +163,80 @@ export async function getReviewsByProduct(
 }
 
 // ============================================================
+// LECTURE — AVIS PAR SHOP
+// ============================================================
+
+export async function getReviewsByShop(
+  shopId: number,
+  query: ListReviewsQuery
+) {
+  const { limit, offset, sort } = query;
+
+  const orderBy =
+    sort === "rating_desc"
+      ? desc(reviews.rating)
+      : sort === "rating_asc"
+      ? asc(reviews.rating)
+      : desc(reviews.created_at);
+
+  // 1. Récupère tous les product_id de la boutique
+  const shopProducts = await db
+    .select({ id: products.id })
+    .from(products)
+    .where(eq(products.shop_id, shopId));
+
+  if (shopProducts.length === 0) {
+    return [];
+  }
+
+  const productIds = shopProducts.map((p) => p.id);
+
+  // 2. Récupère tous les avis sur ces produits
+  const rows = await db
+    .select({
+      id: reviews.id,
+      order_id: reviews.order_id,
+      product_id: reviews.product_id,
+      rating: reviews.rating,
+      comment: reviews.comment,
+      reply_text: reviews.reply_text,
+      replied_at: reviews.replied_at,
+      created_at: reviews.created_at,
+      updated_at: reviews.updated_at,
+      is_flagged: reviews.is_flagged,
+      flag_reason: reviews.flag_reason,
+      seller_id: reviews.seller_id,
+      author_id: reviews.author_id,
+      product_name: products.name,
+      product_image_url: products.image_url,
+      author_first_name: users.first_name,
+      author_last_name: users.last_name,
+      author_username: users.username,
+      author_avatar_url: users.avatar_url,
+      author_verification_status: users.verification_status,
+    })
+    .from(reviews)
+    .leftJoin(products, eq(products.id, reviews.product_id))
+    .leftJoin(users, eq(users.id, reviews.author_id))
+    .where(
+      and(
+        inArray(reviews.product_id, productIds),
+        eq(reviews.is_flagged, 0)
+      )
+    )
+    .orderBy(orderBy)
+    .limit(limit)
+    .offset(offset);
+
+  const badgesMap = await getBadgesForUsers(rows.map((r) => r.author_id));
+
+  return rows.map((r) => ({
+    ...r,
+    author_badges: badgesMap.get(r.author_id) ?? [],
+  }));
+}
+
+// ============================================================
 // LECTURE — AVIS PAR VENDEUR
 // ============================================================
 
@@ -209,7 +283,6 @@ export async function getReviewsBySeller(
 
   const badgesMap = await getBadgesForUsers(rows.map((r) => r.author_id));
 
-  // Infos du seller + shop (pour afficher sa réponse)
   const [sellerInfo] = await db
     .select({
       id: users.id,
@@ -449,10 +522,6 @@ export async function getReviewById(reviewId: number) {
 // NOTE GLOBALE VENDEUR (batch + single)
 // ============================================================
 
-/**
- * Retourne la note globale d'un vendeur (moyenne + nombre d'avis).
- * Exclut les avis signalés (is_flagged = 0).
- */
 export async function getSellerGlobalRating(
   sellerId: number
 ): Promise<{ average: number; count: number }> {
@@ -472,10 +541,6 @@ export async function getSellerGlobalRating(
   };
 }
 
-/**
- * Retourne les notes globales de plusieurs vendeurs (batch anti N+1).
- * Les sellers sans avis sont renvoyés avec { average: 0, count: 0 }.
- */
 export async function getBulkSellerRatings(
   sellerIds: number[]
 ): Promise<Map<number, { average: number; count: number }>> {

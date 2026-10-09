@@ -11,6 +11,7 @@ import {
 import {
   createReview,
   getReviewsByProduct,
+  getReviewsByShop,
   getReviewsBySeller,
   getMyReviews,
   getProductRatingStats,
@@ -57,6 +58,30 @@ export async function listByProduct(req: AuthRequest, res: Response) {
   }
 
   const reviews = await getReviewsByProduct(productId, parsed.data);
+
+  return res.json({
+    success: true,
+    count: reviews.length,
+    reviews,
+  });
+}
+
+// ============================================================
+// GET /reviews/shop/:id — Avis d'une boutique (public)
+// ============================================================
+
+export async function listByShop(req: AuthRequest, res: Response) {
+  const shopId = Number(req.params.id);
+  if (isNaN(shopId) || shopId <= 0) {
+    throw new AppError("ID boutique invalide", 400);
+  }
+
+  const parsed = listReviewsQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    throw new AppError("Paramètres invalides", 400, parsed.error.flatten().fieldErrors);
+  }
+
+  const reviews = await getReviewsByShop(shopId, parsed.data);
 
   return res.json({
     success: true,

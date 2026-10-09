@@ -4,6 +4,7 @@ import { asyncHandler } from "../../errors/asyncHandler";
 import {
   create,
   listByProduct,
+  listByShop,
   productStats,
   listSellerReviews,
   listMyReviews,
@@ -24,6 +25,9 @@ router.get("/product/:id/stats", asyncHandler(productStats));
 
 // Liste des avis d'un produit
 router.get("/product/:id", asyncHandler(listByProduct));
+
+// Liste des avis d'une boutique
+router.get("/shop/:id", asyncHandler(listByShop));
 
 // ============================================================
 // ROUTES PROTÉGÉES (auth obligatoire)
