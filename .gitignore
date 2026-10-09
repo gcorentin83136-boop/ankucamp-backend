@@ -67,3 +67,13 @@ backups/
 .sentryclirc
 # Scripts de test locaux
 src/scripts/
+
+# Backups locaux
+*.bak
+*.bak2
+*.bak*
+
+# Backups locaux
+*.bak
+*.bak2
+*.bak*
