@@ -327,9 +327,9 @@ export async function updateOrderStatus(
     if (!isBuyer) {
       throw new AppError("Seul l'acheteur peut annuler une commande", 403);
     }
-    if (order.status !== "pending" && order.status !== "confirmed") {
+    if (order.status !== "pending") {
       throw new AppError(
-        "Impossible d'annuler : la commande est déjà expédiée ou terminée",
+        "Impossible d'annuler : la commande n'est plus en attente",
         400
       );
     }
