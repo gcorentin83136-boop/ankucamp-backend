@@ -7,6 +7,7 @@ import {
   orderItems,
   products,
   users,
+  shops,
 } from "../../db/schema";
 import { AppError } from "../../errors/AppError";
 import { stripe } from "../../../config/stripe";
@@ -130,22 +131,93 @@ export async function getMyRefunds(buyerId: number) {
 export async function getAllRefunds(query: ListRefundsQuery) {
   const { limit, offset, status } = query;
 
-  if (status) {
-    return db
-      .select()
-      .from(refundRequests)
-      .where(eq(refundRequests.status, status))
-      .orderBy(desc(refundRequests.requested_at))
-      .limit(limit)
-      .offset(offset);
-  }
+  const rows = status
+    ? await db
+        .select()
+        .from(refundRequests)
+        .where(eq(refundRequests.status, status))
+        .orderBy(desc(refundRequests.requested_at))
+        .limit(limit)
+        .offset(offset)
+    : await db
+        .select()
+        .from(refundRequests)
+        .orderBy(desc(refundRequests.requested_at))
+        .limit(limit)
+        .offset(offset);
 
-  return db
-    .select()
-    .from(refundRequests)
-    .orderBy(desc(refundRequests.requested_at))
-    .limit(limit)
-    .offset(offset);
+  if (rows.length === 0) return [];
+
+  // Récupérer les IDs liés
+  const orderIds = [...new Set(rows.map((r) => r.order_id))];
+  const buyerIds = [...new Set(rows.map((r) => r.requested_by))];
+  const paymentIds = [...new Set(rows.map((r) => r.payment_id))];
+
+  const [ordersList, buyersList, paymentsList] = await Promise.all([
+    db
+      .select({
+        id: orders.id,
+        total_price: orders.total_price,
+        status: orders.status,
+        delivery_method: orders.delivery_method,
+        created_at: orders.created_at,
+        seller_id: orders.seller_id,
+      })
+      .from(orders)
+      .where(inArray(orders.id, orderIds)),
+    db
+      .select({
+        id: users.id,
+        first_name: users.first_name,
+        last_name: users.last_name,
+        username: users.username,
+        avatar_url: users.avatar_url,
+        email: users.email,
+      })
+      .from(users)
+      .where(inArray(users.id, buyerIds)),
+    db
+      .select({
+        id: payments.id,
+        stripe_payment_intent: payments.stripe_payment_intent,
+        amount_ttc: payments.amount_ttc,
+        status: payments.status,
+      })
+      .from(payments)
+      .where(inArray(payments.id, paymentIds)),
+  ]);
+
+  // Récupérer les shops (via seller_id des orders)
+  const sellerIds = [...new Set(ordersList.map((o) => o.seller_id))];
+  const shopsList =
+    sellerIds.length > 0
+      ? await db
+          .select({
+            id: shops.id,
+            name: shops.name,
+            logo_url: shops.logo_url,
+            owner_id: shops.owner_id,
+          })
+          .from(shops)
+          .where(inArray(shops.owner_id, sellerIds))
+      : [];
+
+  const ordersMap = new Map(ordersList.map((o) => [o.id, o]));
+  const buyersMap = new Map(buyersList.map((b) => [b.id, b]));
+  const paymentsMap = new Map(paymentsList.map((p) => [p.id, p]));
+  const shopsMap = new Map(shopsList.map((s) => [s.owner_id, s]));
+
+  return rows.map((r) => {
+    const order = ordersMap.get(r.order_id);
+    const shop = order ? shopsMap.get(order.seller_id) : null;
+    return {
+      ...r,
+      buyer: buyersMap.get(r.requested_by) ?? null,
+      order: order ?? null,
+      shop: shop ?? null,
+      payment: paymentsMap.get(r.payment_id) ?? null,
+    };
+  });
 }
 
 // ============================================================
@@ -231,8 +303,6 @@ export async function approveRefund(
   // DEV BYPASS : si NODE_ENV=development et PI factice (pi_test_*),
   // on skip l'appel Stripe (le PI n'existe pas chez Stripe).
   // ============================================================
-  // Le bypass s'active uniquement si STRIPE_BYPASS_DEV=true (voir .env)
-  // Par défaut en dev, on skip Stripe. Mets STRIPE_BYPASS_DEV=false pour tester pour de vrai.
   const stripeBypassDev = process.env.STRIPE_BYPASS_DEV !== "false";
 
   if (process.env.NODE_ENV === "development" && stripeBypassDev) {
@@ -308,9 +378,6 @@ export async function approveRefund(
   }
 
   // 5. Met à jour la demande
-  // ✅ FIX : on passe directement à "refunded" (pas "approved")
-  // Car si Stripe a accepté, le remboursement est garanti.
-  // Le webhook charge.refunded reste un filet de sécurité (idempotent).
   await db
     .update(refundRequests)
     .set({
@@ -344,7 +411,6 @@ export async function approveRefund(
     await db
       .update(products)
       .set({
-        // Remet la quantité dans le stock
         stock: (await getProductStock(item.product_id)) + item.quantity,
       })
       .where(eq(products.id, item.product_id));
