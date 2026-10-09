@@ -36,6 +36,14 @@ export type SearchUsersQuery = z.infer<typeof searchUsersQuerySchema>;
 export const searchShopsQuerySchema = baseQuerySchema.extend({
   city: z.string().max(100).optional(),
   category_id: z.coerce.number().int().positive().optional(),
+  min_rating: z.coerce.number().min(0).max(5).optional(),
+  delivery: z
+    .enum(["pickup", "shipping", "meeting"])
+    .optional(),
+  has_stock: z
+    .union([z.literal("true"), z.literal("false"), z.boolean()])
+    .transform((v) => v === "true" || v === true)
+    .optional(),
   sort: z
     .enum(["relevance", "recent", "rating", "products_count"])
     .default("relevance"),

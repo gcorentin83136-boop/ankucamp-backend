@@ -166,7 +166,7 @@ export async function searchUsers(query: SearchUsersQuery) {
 // ============================================================
 
 export async function searchShops(query: SearchShopsQuery) {
-  const { q, city, category_id, sort, limit, offset, lat, lng, radius } = query;
+  const { q, city, category_id, min_rating, delivery, has_stock, sort, limit, offset, lat, lng, radius } = query;
 
   const hiddenShopIds = await getHiddenShopIds();
   const conditions: any[] = [];
@@ -200,6 +200,30 @@ export async function searchShops(query: SearchShopsQuery) {
     const ids = shopIdsInCategory.map((s) => s.shop_id);
     if (ids.length === 0) return [];
     conditions.push(inArray(shops.id, ids));
+  }
+
+  if (min_rating !== undefined && min_rating > 0) {
+    conditions.push(
+      sql`(SELECT COALESCE(AVG(rating), 0) FROM reviews WHERE seller_id = ${shops.owner_id} AND is_flagged = 0) >= ${min_rating}`
+    );
+  }
+
+  if (delivery) {
+    const col =
+      delivery === "pickup"
+        ? products.delivery_pickup
+        : delivery === "shipping"
+          ? products.delivery_shipping
+          : products.delivery_meeting;
+    conditions.push(
+      sql`EXISTS (SELECT 1 FROM products WHERE shop_id = ${shops.id} AND ${col} = 1)`
+    );
+  }
+
+  if (has_stock === true) {
+    conditions.push(
+      sql`EXISTS (SELECT 1 FROM products WHERE shop_id = ${shops.id} AND (stock > 0 OR has_unlimited_stock = 1))`
+    );
   }
 
   const distanceExpr = applyGeoFilters(conditions, shops, lat, lng, radius);
