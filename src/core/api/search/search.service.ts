@@ -18,6 +18,8 @@ import {
   shops,
   shopSettings,
   products,
+  follows,
+  userBadges,
   userSettings,
   shopCategories,
 } from "../../db/schema";
@@ -236,11 +238,25 @@ export async function searchShops(query: SearchShopsQuery) {
     products_count: sql<number>`(
       SELECT COUNT(*)::int FROM products WHERE shop_id = ${shops.id}
     )`,
+    followers_count: sql<number>`(
+      SELECT COUNT(*)::int FROM follows WHERE shop_id = ${shops.id}
+    )`,
     average_rating: sql<number>`(
       SELECT COALESCE(AVG(rating), 0)::numeric(3,1)
       FROM reviews
       WHERE seller_id = ${shops.owner_id} AND is_flagged = 0
     )`,
+    vacation_mode: sql<number>`COALESCE((
+      SELECT vacation_mode FROM shop_settings WHERE shop_id = ${shops.id} LIMIT 1
+    ), 0)`,
+    owner_id: shops.owner_id,
+    owner_username: users.username,
+    owner_avatar_url: users.avatar_url,
+    owner_verification_status: users.verification_status,
+    owner_badges: sql<string[]>`COALESCE((
+      SELECT json_agg(badge) FROM user_badges
+      WHERE user_id = ${shops.owner_id} AND revoked_at IS NULL
+    ), '[]'::json)`,
   };
 
   if (hasGeo) {
@@ -250,6 +266,7 @@ export async function searchShops(query: SearchShopsQuery) {
   return db
     .select(selectFields)
     .from(shops)
+    .leftJoin(users, eq(users.id, shops.owner_id))
     .where(conditions.length > 0 ? and(...conditions) : sql`1=1`)
     .orderBy(orderBy)
     .limit(limit)
