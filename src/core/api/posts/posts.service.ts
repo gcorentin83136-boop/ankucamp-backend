@@ -553,6 +553,7 @@ export async function addComment(
       author_id: authorId,
       content: input.content,
       parent_comment_id: input.parent_comment_id ?? null,
+        media_url: input.media_url ?? null,
     })
     .returning();
 
@@ -612,6 +613,7 @@ export async function getComments(postId: number, query: ListPostsQuery) {
       author_id: postComments.author_id,
       content: postComments.content,
       parent_comment_id: postComments.parent_comment_id,
+        media_url: postComments.media_url,
       created_at: postComments.created_at,
       author_first_name: users.first_name,
       author_last_name: users.last_name,
