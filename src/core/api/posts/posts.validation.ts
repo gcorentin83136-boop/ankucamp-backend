@@ -41,6 +41,7 @@ export const createCommentSchema = z.object({
     .min(1, "Le commentaire ne peut pas être vide")
     .max(2000, "Le commentaire ne peut pas dépasser 2000 caractères"),
   parent_comment_id: z.number().int().positive().optional().nullable(),
+  media_url: z.string().url().optional().nullable(),
 });
 
 export type CreateCommentInput = z.infer<typeof createCommentSchema>;
