@@ -174,14 +174,35 @@ export async function uploadPostMedia(req: AuthRequest, res: Response) {
 }
 
 // ============================================================
-// POST /uploads/kyc-document  ⭐ NOUVEAU
-// Upload un document KYC (PDF ou image) et retourne l'URL.
+// POST /uploads/post-video
+// Upload une vidéo pour un post (réseau social)
+// ============================================================
+export async function uploadPostVideo(req: AuthRequest, res: Response) {
+  if (!req.user) throw new AppError("Non authentifié", 401);
+  if (!req.file) throw new AppError("Aucun fichier fourni", 400);
+
+  const url = await uploadToCloudinary(
+    req.file.buffer,
+    "ankucamp/posts/videos",
+    {
+      resourceType: "video",
+    }
+  );
+
+  return res.status(200).json({
+    success: true,
+    message: "Vidéo uploadée",
+    url,
+  });
+}
+
+// ============================================================
+// POST /uploads/kyc-document
 // ============================================================
 export async function uploadKycDocument(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifié", 401);
   if (!req.file) throw new AppError("Aucun fichier fourni", 400);
 
-  // Cloudinary : resourceType "auto" pour gérer PDF + images
   const url = await uploadToCloudinary(
     req.file.buffer,
     "ankucamp/kyc-documents",
@@ -197,8 +218,6 @@ export async function uploadKycDocument(req: AuthRequest, res: Response) {
 
 // ============================================================
 // POST /uploads/product-image-draft
-// Upload une image SANS product_id (avant creation du produit).
-// Retourne juste l'URL Cloudinary.
 // ============================================================
 export async function uploadProductImageDraft(
   req: AuthRequest,
@@ -225,9 +244,6 @@ export async function uploadProductImageDraft(
 
 // ============================================================
 // POST /uploads/product-video
-// Upload une video produit (max 3 par produit).
-// Body : multipart avec file + product_id
-// Append l'URL au tableau video_urls du produit.
 // ============================================================
 export async function uploadProductVideo(
   req: AuthRequest,
@@ -257,7 +273,6 @@ export async function uploadProductVideo(
     throw new AppError("Non proprietaire", 403);
   }
 
-  // Parse video_urls existant
   let videos: string[] = [];
   if (product.video_urls) {
     try {
@@ -268,7 +283,6 @@ export async function uploadProductVideo(
     }
   }
 
-  // Limite de 3 videos
   if (videos.length >= 3) {
     throw new AppError(
       "Maximum 3 videos par produit. Supprime-en une avant d'en ajouter une nouvelle.",
@@ -276,7 +290,6 @@ export async function uploadProductVideo(
     );
   }
 
-  // Upload Cloudinary avec resource_type "video"
   const url = await uploadToCloudinary(
     req.file.buffer,
     "ankucamp/products/videos",
@@ -302,8 +315,6 @@ export async function uploadProductVideo(
 
 // ============================================================
 // DELETE /uploads/product-video
-// Body JSON : { product_id, url }
-// Retire une video du tableau video_urls.
 // ============================================================
 export async function deleteProductVideo(
   req: AuthRequest,
@@ -359,9 +370,9 @@ export async function deleteProductVideo(
     video_urls: videos,
   });
 }
+
 // ============================================================
 // POST /uploads/product-video-draft
-// Upload une video SANS product_id (avant creation du produit).
 // ============================================================
 export async function uploadProductVideoDraft(
   req: AuthRequest,
@@ -385,10 +396,8 @@ export async function uploadProductVideoDraft(
   });
 }
 
-
 // ============================================================
 // POST /uploads/event-cover
-// Upload une image de couverture d'événement
 // ============================================================
 export async function uploadEventCover(
   req: AuthRequest,
@@ -412,10 +421,8 @@ export async function uploadEventCover(
   });
 }
 
-
 // ============================================================
 // POST /uploads/comment-media
-// Upload une image/GIF pour un commentaire (article ou post)
 // ============================================================
 export async function uploadCommentMedia(
   req: AuthRequest,

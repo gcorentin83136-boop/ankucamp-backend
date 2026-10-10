@@ -19,6 +19,7 @@ import {
   uploadProductVideoDraft,
   deleteProductVideo,
   uploadPostMedia,
+  uploadPostVideo,
   uploadKycDocument,
 } from "./uploads.controller";
 
@@ -86,7 +87,7 @@ router.post(
   asyncHandler(uploadProductImageDraft)
 );
 
-// Media de post
+// Media de post (image)
 router.post(
   "/post-media",
   authMiddleware,
@@ -116,6 +117,17 @@ router.delete(
   "/product-video",
   authMiddleware,
   asyncHandler(deleteProductVideo)
+);
+
+// ============================================================
+// VIDEO DE POST (réseau social)
+// ============================================================
+
+router.post(
+  "/post-video",
+  authMiddleware,
+  uploadVideo.single("file"),
+  asyncHandler(uploadPostVideo)
 );
 
 // ============================================================
