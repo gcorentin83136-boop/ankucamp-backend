@@ -1,7 +1,8 @@
 import { eq, and, desc, sql } from "drizzle-orm";
 import { db } from "../../db";
-import { follows, shops } from "../../db/schema";
+import { follows, shops, users } from "../../db/schema";
 import { AppError } from "../../errors/AppError";
+import { notifyNewFollower } from "../../notifications/social-notifications.helper";
 import type { ListFollowsQuery } from "./follows.validation";
 
 // ============================================================
@@ -35,8 +36,28 @@ export async function toggleFollow(shopId: number, userId: number) {
   }
 
   await db.insert(follows).values({ shop_id: shopId, follower_id: userId });
+    // 🔔 Notifier le vendeur qu'il a un nouvel abonné (fire & forget)
+    try {
+      const [follower] = await db
+        .select({
+          first_name: users.first_name,
+          last_name: users.last_name,
+        })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
 
-  return { following: true };
+      if (follower) {
+        const name = `${follower.first_name} ${follower.last_name}`.trim();
+        notifyNewFollower(shop.owner_id, name).catch((err) =>
+          console.error("❌ Erreur notif follow:", err)
+        );
+      }
+    } catch (err) {
+      console.error("❌ Erreur préparation notif follow:", err);
+    }
+
+    return { following: true };
 }
 
 // ============================================================
