@@ -246,18 +246,12 @@ describe("Posts — POST /posts", () => {
     expect(res.status).toBe(400);
   });
 
-  it("rejette plus de 4 médias (400)", async () => {
+  it("rejette plus de 20 médias (400)", async () => {
     const res = await request(app)
       .post("/posts")
       .set(authHeader(tokenA))
       .send({
-        media_urls: [
-          "https://example.com/1.jpg",
-          "https://example.com/2.jpg",
-          "https://example.com/3.jpg",
-          "https://example.com/4.jpg",
-          "https://example.com/5.jpg",
-        ],
+        media_urls: Array.from({ length: 21 }, (_, i) => `https://example.com/${i + 1}.jpg`),
       });
 
     expect(res.status).toBe(400);
