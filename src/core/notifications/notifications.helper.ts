@@ -180,6 +180,22 @@ export async function notifyNewOrder(
 /**
  * Notifie l'acheteur que sa commande a été expédiée.
  */
+/**
+ * Notifie l'acheteur que sa commande est confirmée (paiement OK).
+ */
+export async function notifyOrderConfirmed(
+  buyerId: number,
+  orderId: number,
+  totalPrice: string
+): Promise<void> {
+  await notify(
+    buyerId,
+    "order",
+    `Commande #${orderId} confirmée ✅`,
+    `Ton paiement de ${totalPrice} € a bien été reçu. Le vendeur va préparer ta commande.`,
+    `/orders/${orderId}`
+  );
+}
 export async function notifyOrderShipped(
   buyerId: number,
   orderId: number,

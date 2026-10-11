@@ -5,7 +5,7 @@ import { payments, orders, orderItems, products, users } from "../../db/schema";
 import { AppError } from "../../errors/AppError";
 import { stripe } from "../../../config/stripe";
 import { env } from "../../../config/env";
-import { notifyNewOrder } from "../../notifications/notifications.helper";
+import { notifyNewOrder, notifyOrderConfirmed } from "../../notifications/notifications.helper";
 
 const FRONTEND_URL =
   env.NODE_ENV === "development"
@@ -341,6 +341,13 @@ export async function handleStripeEvent(event: {
               order.seller_id,
               order.id,
               `${buyer.first_name} ${buyer.last_name}`,
+              order.total_price
+            );
+
+            // 🔔 NOTIF ACHETEUR : commande confirmée
+            await notifyOrderConfirmed(
+              order.buyer_id,
+              order.id,
               order.total_price
             );
           }
