@@ -12,7 +12,7 @@ export const createPostSchema = z.object({
     .nullable(),
   media_urls: z
     .array(z.string().url())
-    .max(4, "Maximum 4 médias par post")
+    .max(20, "Maximum 20 médias par post")
     .optional()
     .default([]),
   visibility: z.enum(["public", "friends", "private"]).default("public"),

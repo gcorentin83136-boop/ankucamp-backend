@@ -121,8 +121,8 @@ export const searchLimiter = createConditionalLimiter({
  */
 export const uploadsLimiter = createConditionalLimiter({
   windowMs: 60 * 1000,
-  limit: 10,
-  testLimit: 3,
+  limit: 50,
+  testLimit: 30,
   message: "Trop d'uploads, réessayez dans 1 minute",
   keyBy: "user",
 });
