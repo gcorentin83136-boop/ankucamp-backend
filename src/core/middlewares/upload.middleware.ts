@@ -1,4 +1,4 @@
-﻿import multer from "multer";
+import multer from "multer";
 import { AppError } from "../errors/AppError";
 
 // ------------------------------------------------------------
@@ -56,9 +56,9 @@ export const uploadDocument = multer({
 });
 
 // ------------------------------------------------------------
-// Upload VIDÉOS (produits : mp4, webm, mov, 50 MB max)
+// Upload VIDÉOS (produits : mp4, webm, mov, 100 MB max)
 // ------------------------------------------------------------
-const MAX_VIDEO_SIZE = 50 * 1024 * 1024; // 50 MB
+const MAX_VIDEO_SIZE = 100 * 1024 * 1024; // 100 MB
 const ALLOWED_VIDEO_TYPES = [
   "video/mp4",
   "video/webm",
