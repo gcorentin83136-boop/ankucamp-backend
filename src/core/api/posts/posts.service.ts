@@ -1,4 +1,4 @@
-import { eq, and, desc, or, inArray, sql, gte } from "drizzle-orm";
+import { eq, and, desc, or, inArray, notInArray, sql, gte } from "drizzle-orm";
 import { db } from "../../db";
 import {
   posts,
@@ -12,6 +12,7 @@ import {
   articles,
 } from "../../db/schema";
 import { AppError } from "../../errors/AppError";
+import { getHiddenUserIds, assertCanInteract } from "../users/blocks.service";
 import {
   notifyFriendsNewPost,
   notifyPostLiked,
@@ -289,6 +290,9 @@ export async function getFeed(viewerId: number, query: ListPostsQuery) {
 
   const friendIds = await getFriendIds(viewerId);
 
+  // 🚫 Exclure les utilisateurs bloqués (dans les 2 sens)
+  const hiddenIds = await getHiddenUserIds(viewerId);
+
   const conditions: any[] = [eq(posts.visibility, "public")];
 
   if (friendIds.length > 0) {
@@ -299,10 +303,15 @@ export async function getFeed(viewerId: number, query: ListPostsQuery) {
 
   conditions.push(eq(posts.author_id, viewerId));
 
+  let whereClause: any = or(...conditions);
+  if (hiddenIds.length > 0) {
+    whereClause = and(whereClause, notInArray(posts.author_id, hiddenIds));
+  }
+
   const rows = await db
     .select()
     .from(posts)
-    .where(or(...conditions))
+    .where(whereClause)
     .orderBy(desc(posts.created_at))
     .limit(limit)
     .offset(offset);
@@ -471,6 +480,9 @@ export async function toggleLike(postId: number, userId: number) {
 
   if (!post) throw new AppError("Post introuvable", 404);
 
+    // 🚫 Bloqué / restreint → interdit de liker
+    await assertCanInteract(userId, post.author_id, "liker ce post");
+
   const [existing] = await db
     .select()
     .from(postLikes)
@@ -557,6 +569,9 @@ export async function addComment(
 
   if (!post) throw new AppError("Post introuvable", 404);
 
+    // 🚫 Bloqué / restreint → interdit de commenter
+    await assertCanInteract(authorId, post.author_id, "commenter ce post");
+
   if (input.parent_comment_id) {
     const [parent] = await db
       .select()
@@ -630,8 +645,14 @@ export async function addComment(
   return created;
 }
 
-export async function getComments(postId: number, query: ListPostsQuery) {
+export async function getComments(
+  postId: number,
+  query: ListPostsQuery,
+  viewerId?: number
+) {
   const { limit, offset } = query;
+
+  const hiddenIds = viewerId ? await getHiddenUserIds(viewerId) : [];
 
   const all = await db
     .select({
@@ -650,7 +671,14 @@ export async function getComments(postId: number, query: ListPostsQuery) {
     })
     .from(postComments)
     .leftJoin(users, eq(users.id, postComments.author_id))
-    .where(eq(postComments.post_id, postId))
+    .where(
+        hiddenIds.length > 0
+          ? and(
+              eq(postComments.post_id, postId),
+              notInArray(postComments.author_id, hiddenIds)
+            )
+          : eq(postComments.post_id, postId)
+      )
     .orderBy(postComments.created_at);
 
   const badgesMap = await getBadgesForUsers(all.map((c) => c.author_id));

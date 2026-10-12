@@ -2,6 +2,7 @@ import { eq, and, or, desc, inArray, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { friendships, users } from "../../db/schema";
 import { AppError } from "../../errors/AppError";
+import { assertCanInteract } from "../users/blocks.service";
 import {
   notifyFriendRequest,
   notifyFriendAccepted,
@@ -93,6 +94,9 @@ export async function sendFriendRequest(
   if (requesterId === receiverId) {
     throw new AppError("Tu ne peux pas t'envoyer une demande à toi-même", 400);
   }
+
+  // 🚫 Bloqué / restreint → pas de demande d'ami
+  await assertCanInteract(requesterId, receiverId, "demander en ami");
 
   // Vérifier que le receiver existe
   const [receiver] = await db

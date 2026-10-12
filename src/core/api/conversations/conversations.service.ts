@@ -9,6 +9,7 @@ import {
   users,
 } from "../../db/schema";
 import { AppError } from "../../errors/AppError";
+import { getBlockersOf } from "../users/blocks.service";
 import type {
   CreateConversationInput,
   UpdateConversationInput,
@@ -477,6 +478,25 @@ export async function sendMessage(
   input: SendMessageInput
 ) {
   await assertParticipant(conversationId, senderId);
+
+  // 🚫 Blocage : si un autre participant m'a bloqué, je ne peux pas envoyer
+  const blockers = await getBlockersOf(senderId);
+  if (blockers.length > 0) {
+    const otherParticipants = await db
+      .select({ user_id: conversationParticipants.user_id })
+      .from(conversationParticipants)
+      .where(eq(conversationParticipants.conversation_id, conversationId));
+
+    const conflict = otherParticipants.find((p) =>
+      blockers.includes(p.user_id)
+    );
+    if (conflict) {
+      throw new AppError(
+        "Tu ne peux pas envoyer de message à cet utilisateur",
+        403
+      );
+    }
+  }
 
   if (!input.content && !input.media_url) {
     throw new AppError("Le message doit avoir du contenu ou un média", 400);
