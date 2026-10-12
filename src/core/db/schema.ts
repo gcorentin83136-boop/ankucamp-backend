@@ -712,3 +712,16 @@ export const userTwoFactor = pgTable("user_2fa", {
   created_at: timestamp("created_at").defaultNow(),
   updated_at: timestamp("updated_at").defaultNow(),
 });
+
+
+// ========================
+// USER BLOCKS / RESTRICTS
+// ========================
+export const userBlocks = pgTable("user_blocks", {
+  id: serial("id").primaryKey(),
+  blocker_id: integer("blocker_id").notNull(),
+  blocked_id: integer("blocked_id").notNull(),
+  type: varchar("type", { length: 20 }).notNull().default("block"),
+  // "block" = invisible total, "restrict" = voit mais ne peut pas interagir
+  created_at: timestamp("created_at").defaultNow(),
+});

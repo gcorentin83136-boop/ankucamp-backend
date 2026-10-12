@@ -1,4 +1,4 @@
-﻿import { Router } from "express";
+import { Router } from "express";
 import {
   authMiddleware,
   authOptionalMiddleware,
@@ -19,6 +19,15 @@ import {
   adminUnsuspend,
   adminDeleteUser,
 } from "./users.controller";
+import {
+  postBlock,
+  deleteBlock,
+  postRestrict,
+  deleteRestrict,
+  getMyBlocked,
+  getMyRestricted,
+  getBlockStatus,
+} from "./blocks.controller";
 
 const router = Router();
 
@@ -56,6 +65,24 @@ router.delete(
   requireRole("admin"),
   asyncHandler(adminDeleteUser)
 );
+
+// ============================================================
+// LECTURE PUBLIQUE
+// ============================================================
+
+// ============================================================
+// BLOCAGE / RESTRICTION
+// (avant /:id pour eviter les collisions)
+// ============================================================
+
+router.get("/me/blocked", authMiddleware, asyncHandler(getMyBlocked));
+router.get("/me/restricted", authMiddleware, asyncHandler(getMyRestricted));
+
+router.post("/:id/block", authMiddleware, asyncHandler(postBlock));
+router.delete("/:id/block", authMiddleware, asyncHandler(deleteBlock));
+router.post("/:id/restrict", authMiddleware, asyncHandler(postRestrict));
+router.delete("/:id/restrict", authMiddleware, asyncHandler(deleteRestrict));
+router.get("/:id/block-status", authMiddleware, asyncHandler(getBlockStatus));
 
 // ============================================================
 // LECTURE PUBLIQUE
