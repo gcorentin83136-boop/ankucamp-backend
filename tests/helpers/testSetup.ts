@@ -33,7 +33,8 @@ export const testDb = drizzle(testPool, { schema });
 export async function cleanDatabase() {
   await testPool.query(`
     TRUNCATE TABLE
-      notifications,
+      
+      user_blocks,notifications,
       message_reactions,
       message_reads,
       messages,

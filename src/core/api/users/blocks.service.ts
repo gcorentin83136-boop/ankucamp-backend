@@ -13,6 +13,16 @@ const RESTRICT = "restrict";
 // HELPERS PRIVÉS
 // ============================================================
 
+async function assertNotAdmin(targetId: number) {
+  const [user] = await db
+    .select({ role: users.role })
+    .from(users)
+    .where(eq(users.id, targetId))
+    .limit(1);
+  if (user?.role === "admin") {
+    throw new AppError("Tu ne peux pas bloquer ni restreindre un administrateur ANKU", 403);
+  }
+}
 async function assertUserExists(userId: number) {
   const [user] = await db
     .select({ id: users.id })
@@ -54,6 +64,7 @@ async function findRow(
 export async function blockUser(blockerId: number, blockedId: number) {
   await assertNotSelf(blockerId, blockedId);
   await assertUserExists(blockedId);
+  await assertNotAdmin(blockedId);
 
   const existing = await findRow(blockerId, blockedId, BLOCK);
   if (existing) {
@@ -98,6 +109,7 @@ export async function unblockUser(blockerId: number, blockedId: number) {
 export async function restrictUser(blockerId: number, blockedId: number) {
   await assertNotSelf(blockerId, blockedId);
   await assertUserExists(blockedId);
+  await assertNotAdmin(blockedId);
 
   const existing = await findRow(blockerId, blockedId, RESTRICT);
   if (existing) {
