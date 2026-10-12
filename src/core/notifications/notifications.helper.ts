@@ -173,7 +173,7 @@ export async function notifyNewOrder(
     "order",
     `Nouvelle commande #${orderId} 🛒`,
     `${buyerName} vient de commander chez toi pour ${totalPrice} €.`,
-    `/dashboard/orders/${orderId}`
+    `/dashboard/orders/${orderId}?status=confirmed`
   );
 }
 
@@ -193,7 +193,7 @@ export async function notifyOrderConfirmed(
     "order",
     `Commande #${orderId} confirmée ✅`,
     `Ton paiement de ${totalPrice} € a bien été reçu. Le vendeur va préparer ta commande.`,
-    `/orders/${orderId}`
+    `/orders/${orderId}?status=confirmed`
   );
 }
 export async function notifyOrderShipped(
@@ -210,7 +210,7 @@ export async function notifyOrderShipped(
     "order",
     `Commande #${orderId} expédiée 📦`,
     content,
-    `/orders/${orderId}`
+    `/orders/${orderId}?status=shipped`
   );
 }
 
@@ -226,7 +226,7 @@ export async function notifyOrderDelivered(
     "order",
     `Commande #${orderId} livrée 🎉`,
     `Ta commande est arrivée. Laisse un avis pour aider la communauté !`,
-    `/orders/${orderId}/review`
+    `/orders/${orderId}/review?status=delivered`
   );
 }
 
@@ -242,7 +242,7 @@ export async function notifyOrderCancelled(
     "order",
     `Commande #${orderId} annulée ❌`,
     `L'acheteur a annulé cette commande.`,
-    `/dashboard/orders/${orderId}`
+    `/dashboard/orders/${orderId}?status=cancelled`
   );
 }
 
@@ -264,5 +264,128 @@ export async function notifyNewReview(
     `Nouvel avis ${stars}`,
     `${authorName} a laissé un avis sur "${productName}".`,
     `/dashboard/reviews/${reviewId}`
+  );
+}
+
+
+// ============================================================
+// REFUNDS
+// ============================================================
+
+export async function notifyRefundRequested(
+  sellerId: number,
+  orderId: number,
+  buyerName: string
+): Promise<void> {
+  await notify(
+    sellerId,
+    "order",
+    `Remboursement demandé 💸`,
+    `${buyerName} demande un remboursement pour la commande #${orderId}.`,
+    `/dashboard/orders/${orderId}?status=refund`
+  );
+}
+
+export async function notifyRefundApproved(
+  buyerId: number,
+  orderId: number,
+  amount: string
+): Promise<void> {
+  await notify(
+    buyerId,
+    "order",
+    `Remboursement approuvé ✅`,
+    `Ton remboursement de ${amount} € pour la commande #${orderId} a été approuvé.`,
+    `/orders/${orderId}?status=confirmed`
+  );
+}
+
+export async function notifyRefundRejected(
+  buyerId: number,
+  orderId: number,
+  reason?: string | null
+): Promise<void> {
+  const content = reason
+    ? `Ta demande de remboursement pour la commande #${orderId} a été refusée. Motif : ${reason}`
+    : `Ta demande de remboursement pour la commande #${orderId} a été refusée.`;
+
+  await notify(
+    buyerId,
+    "order",
+    `Remboursement refusé ❌`,
+    content,
+    `/orders/${orderId}?status=confirmed`
+  );
+}
+
+// ============================================================
+// KYC
+// ============================================================
+
+export async function notifyKycApproved(userId: number): Promise<void> {
+  await notify(
+    userId,
+    "system",
+    `Vérification validée ✅`,
+    `Ton identité a été vérifiée. Tu peux maintenant vendre sur ANKU.`,
+    `/dashboard/shop`
+  );
+}
+
+export async function notifyKycRejected(
+  userId: number,
+  reason: string
+): Promise<void> {
+  await notify(
+    userId,
+    "system",
+    `Vérification refusée ❌`,
+    `Ta demande de vérification a été refusée. Motif : ${reason}`,
+    `/kyc`
+  );
+}
+
+// ============================================================
+// ADMIN / USERS
+// ============================================================
+
+export async function notifyUserSuspended(
+  userId: number,
+  days: number,
+  reason: string
+): Promise<void> {
+  await notify(
+    userId,
+    "system",
+    `Compte suspendu ⚠️`,
+    `Ton compte est suspendu pour ${days} jour(s). Motif : ${reason}`,
+    `/settings`
+  );
+}
+
+export async function notifyUserUnsuspended(userId: number): Promise<void> {
+  await notify(
+    userId,
+    "system",
+    `Compte réactivé ✅`,
+    `Ta suspension est levée. Bon retour sur ANKU !`,
+    `/`
+  );
+}
+
+// ============================================================
+// AUTH
+// ============================================================
+
+export async function notifyWelcome(
+  userId: number,
+  firstName: string
+): Promise<void> {
+  await notify(
+    userId,
+    "welcome",
+    `Bienvenue sur ANKU ${firstName} 🎉`,
+    `Découvre les boutiques près de toi et commence à explorer !`,
+    `/feed`
   );
 }

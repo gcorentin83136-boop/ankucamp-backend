@@ -1,4 +1,5 @@
 import bcrypt from "bcrypt";
+import { notifyWelcome } from "../../notifications/notifications.helper";
 import { eq } from "drizzle-orm";
 import { db } from "../../db";
 import { users, userSettings } from "../../db/schema";
@@ -91,7 +92,12 @@ export async function registerUser(input: RegisterInput) {
     );
   }
 
-  return created;
+  // Notif welcome (fire & forget)
+    notifyWelcome(created.id, created.first_name).catch((err) =>
+      console.error("❌ Erreur notif welcome:", err)
+    );
+
+    return created;
 }
 
 export async function loginUser(

@@ -4,6 +4,10 @@ import { kycRequests, users } from "../../db/schema";
 import { AppError } from "../../errors/AppError";
 import { verifySiret } from "./siret.service";
 import type { CreateKycInput } from "./kyc.validation";
+import {
+  notifyKycApproved,
+  notifyKycRejected,
+} from "../../notifications/notifications.helper";
 
 export async function getMyActiveKycRequest(userId: number) {
   const [row] = await db
@@ -133,6 +137,12 @@ export async function approveKycRequest(id: number, adminId: number) {
     .set({ verification_status: "verified" })
     .where(eq(users.id, request.user_id));
 
+    // Notif user (fire & forget)
+    notifyKycApproved(request.user_id).catch((err) =>
+      console.error("❌ Erreur notif KYC approuvé:", err)
+    );
+
+
   return { success: true, user_id: request.user_id, type: request.type };
 }
 
@@ -160,6 +170,12 @@ export async function rejectKycRequest(
     .update(users)
     .set({ verification_status: "rejected" })
     .where(eq(users.id, request.user_id));
+
+    // Notif user (fire & forget)
+    notifyKycRejected(request.user_id, reason).catch((err) =>
+      console.error("❌ Erreur notif KYC rejeté:", err)
+    );
+
 
   return { success: true, user_id: request.user_id };
 }

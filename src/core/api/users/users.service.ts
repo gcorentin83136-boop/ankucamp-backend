@@ -2,6 +2,10 @@ import { eq, and, or, ilike, desc, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { users, posts, friendships, reviews } from "../../db/schema";
 import { AppError } from "../../errors/AppError";
+import {
+  notifyUserSuspended,
+  notifyUserUnsuspended,
+} from "../../notifications/notifications.helper";
 import type {
   UpdateProfileInput,
   ListUsersQuery,
@@ -274,6 +278,11 @@ export async function suspendUser(
     `🚫 User #${userId} suspendu jusqu'au ${suspendedUntil.toISOString()} (${days}j)`
   );
 
+    notifyUserSuspended(userId, days, reason || "").catch((err) =>
+      console.error("❌ Erreur notif suspendu:", err)
+    );
+
+
   return {
     success: true,
     suspended_until: suspendedUntil,
@@ -300,7 +309,12 @@ export async function unsuspendUser(userId: number) {
 
   console.log(`✅ User #${userId} désuspendu`);
 
-  return { success: true };
+  
+    notifyUserUnsuspended(userId).catch((err) =>
+      console.error("❌ Erreur notif désuspendu:", err)
+    );
+
+    return { success: true };
 }
 
 /**

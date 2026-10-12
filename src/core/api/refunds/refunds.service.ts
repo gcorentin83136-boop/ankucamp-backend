@@ -15,6 +15,11 @@ import type {
   RequestRefundInput,
   ListRefundsQuery,
 } from "./refunds.validation";
+import {
+  notifyRefundRequested,
+  notifyRefundApproved,
+  notifyRefundRejected,
+} from "../../notifications/notifications.helper";
 
 // ============================================================
 // HELPERS
@@ -49,7 +54,7 @@ export async function requestRefund(
   const { order_id, reason } = input;
 
   // 1. Vérifie que la commande existe et appartient au buyer
-  await assertBuyer(order_id, buyerId);
+  const order = await assertBuyer(order_id, buyerId);
 
   // 2. Récupère le paiement associé
   const [payment] = await db
@@ -108,6 +113,26 @@ export async function requestRefund(
   console.log(
     `📩 Demande de remboursement créée pour commande #${order_id} (refund #${created.id})`
   );
+
+  
+  // Notif vendeur (fire & forget)
+  try {
+    const [buyer] = await db
+      .select({ first_name: users.first_name, last_name: users.last_name })
+      .from(users)
+      .where(eq(users.id, buyerId))
+      .limit(1);
+
+    if (buyer) {
+      notifyRefundRequested(
+        order.seller_id,
+        order_id,
+        `${buyer.first_name} ${buyer.last_name}`
+      ).catch((err) => console.error("❌ Erreur notif refund demandé:", err));
+    }
+  } catch (err) {
+    console.error("❌ Erreur préparation notif refund:", err);
+  }
 
   return created;
 }
@@ -334,6 +359,15 @@ export async function approveRefund(
       .update(orders)
       .set({ status: "refunded" })
       .where(eq(orders.id, refund.order_id));
+    // 🔔 Notif acheteur (fire & forget)
+    notifyRefundApproved(
+      refund.requested_by,
+      refund.order_id,
+      String(refund.refund_amount)
+    ).catch((err) =>
+      console.error("❌ Erreur notif refund approuvé:", err)
+    );
+
 
     return {
       stripe_refund_id: fakeRefundId,
@@ -475,7 +509,15 @@ export async function rejectRefund(
 
   console.log(`🚫 Remboursement rejeté (refund #${refundId} par admin #${adminId})`);
 
-  return { refund_id: refundId, status: "rejected" };
+  
+    // Notif acheteur (fire & forget)
+    notifyRefundRejected(
+      refund.requested_by,
+      refund.order_id,
+      adminComment ?? null
+    ).catch((err) => console.error("❌ Erreur notif refund rejeté:", err));
+
+    return { refund_id: refundId, status: "rejected" };
 }
 
 // ============================================================
