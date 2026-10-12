@@ -13,6 +13,7 @@ import {
 } from "../../db/schema";
 import { AppError } from "../../errors/AppError";
 import {
+  notifyFriendsNewPost,
   notifyPostLiked,
   notifyPostCommented,
   notifyCommentReplied,
@@ -227,7 +228,33 @@ export async function createPost(authorId: number, input: CreatePostInput) {
     })
     .returning();
 
-  return enrichPost(created, authorId);
+  // 🔔 Notif amis (fire & forget) — uniquement si le post n'est pas privé
+    if (visibility !== "private") {
+      try {
+        const [author] = await db
+          .select({ first_name: users.first_name, last_name: users.last_name })
+          .from(users)
+          .where(eq(users.id, authorId))
+          .limit(1);
+
+        const friendIds = await getFriendIds(authorId);
+        if (friendIds.length > 0 && author) {
+          const authorName = `${author.first_name} ${author.last_name}`.trim();
+          notifyFriendsNewPost(
+            friendIds,
+            created.id,
+            authorName,
+            content ?? ""
+          ).catch((err) =>
+            console.error("❌ Erreur notif post amis:", err)
+          );
+        }
+      } catch (err) {
+        console.error("❌ Erreur préparation notif post amis:", err);
+      }
+    }
+
+    return enrichPost(created, authorId);
 }
 
 // ============================================================

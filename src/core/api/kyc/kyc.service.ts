@@ -3,6 +3,7 @@ import { db } from "../../db";
 import { kycRequests, users } from "../../db/schema";
 import { AppError } from "../../errors/AppError";
 import { verifySiret } from "./siret.service";
+import { notifyAdminsNewKyc } from "../../notifications/notifications.helper";
 import type { CreateKycInput } from "./kyc.validation";
 import {
   notifyKycApproved,
@@ -59,7 +60,12 @@ export async function createKycRequest(userId: number, input: CreateKycInput) {
     .set({ verification_status: "pending" })
     .where(eq(users.id, userId));
 
-  return created;
+  // 🔔 Notif admins (fire & forget)
+    notifyAdminsNewKyc(userId).catch((err) =>
+      console.error("❌ Erreur notif KYC admin:", err)
+    );
+
+    return created;
 }
 
 export async function cancelMyKycRequest(userId: number) {

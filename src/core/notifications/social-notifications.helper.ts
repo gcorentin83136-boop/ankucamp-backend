@@ -213,3 +213,32 @@ export async function notifyEventLiked(
     `/events/${eventId}`
   );
 }
+
+
+/**
+ * Notifie les amis qu'un user a publié un nouveau post.
+ */
+export async function notifyFriendsNewPost(
+  friendIds: number[],
+  postId: number,
+  authorName: string,
+  preview: string
+): Promise<void> {
+  if (friendIds.length === 0) return;
+
+  const shortPreview = preview.trim().slice(0, 100) || "Clique pour voir le post";
+
+  await Promise.all(
+    friendIds.map((friendId) =>
+      notify(
+        friendId,
+        "social",
+        `📝 ${authorName} a publié un post`,
+        shortPreview,
+        `/feed?post=${postId}`
+      ).catch((err) =>
+        console.error(`❌ Erreur notif post ami ${friendId}:`, err)
+      )
+    )
+  );
+}

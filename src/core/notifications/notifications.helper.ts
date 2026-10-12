@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { db } from "../db";
-import { userSettings } from "../db/schema";
+import { userSettings, users } from "../db/schema";
 import { createNotification } from "../api/notifications/notifications.service";
 import { sendPushToUser } from "../api/notifications/push/push.service";
 
@@ -387,5 +387,95 @@ export async function notifyWelcome(
     `Bienvenue sur ANKU ${firstName} 🎉`,
     `Découvre les boutiques près de toi et commence à explorer !`,
     `/feed`
+  );
+}
+
+
+// ============================================================
+// NOTIFICATIONS ADMIN
+// ============================================================
+
+/**
+ * Récupère tous les IDs des utilisateurs ayant le rôle "admin".
+ */
+async function getAdminIds(): Promise<number[]> {
+  const rows = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.role, "admin"));
+  return rows.map((r) => r.id);
+}
+
+/**
+ * Envoie une notification à tous les admins (fire & forget).
+ */
+export async function notifyAllAdmins(
+  title: string,
+  content: string,
+  link: string
+): Promise<void> {
+  try {
+    const adminIds = await getAdminIds();
+    if (adminIds.length === 0) return;
+    await Promise.all(
+      adminIds.map((id) =>
+        notify(id, "system", title, content, link).catch((err) =>
+          console.error(`❌ Erreur notif admin #${id}:`, err)
+        )
+      )
+    );
+  } catch (err) {
+    console.error("❌ Erreur notifyAllAdmins:", err);
+  }
+}
+
+/**
+ * Notifie les admins qu'un signalement a été créé.
+ */
+export async function notifyAdminsNewReport(
+  reportId: number,
+  targetType: string
+): Promise<void> {
+  await notifyAllAdmins(
+    `Nouveau signalement 🚨`,
+    `Un signalement (${targetType}) est en attente de modération.`,
+    `/admin/moderation`
+  );
+}
+
+/**
+ * Notifie les admins qu'une demande KYC a été créée.
+ */
+export async function notifyAdminsNewKyc(userId: number): Promise<void> {
+  try {
+    const [user] = await db
+      .select({ first_name: users.first_name, last_name: users.last_name })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    const name = user
+      ? `${user.first_name} ${user.last_name}`.trim()
+      : "Un utilisateur";
+    await notifyAllAdmins(
+      `Nouvelle demande KYC 📋`,
+      `${name} a soumis une demande de vérification.`,
+      `/admin/kyc`
+    );
+  } catch (err) {
+    console.error("❌ Erreur notifyAdminsNewKyc:", err);
+  }
+}
+
+/**
+ * Notifie les admins qu'une demande de remboursement attend validation.
+ */
+export async function notifyAdminsNewRefund(
+  refundId: number,
+  orderId: number
+): Promise<void> {
+  await notifyAllAdmins(
+    `Remboursement à traiter 💸`,
+    `Une demande de remboursement (#${refundId}) attend validation pour la commande #${orderId}.`,
+    `/admin/refunds`
   );
 }

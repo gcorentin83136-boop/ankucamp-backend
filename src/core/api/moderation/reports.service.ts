@@ -1,4 +1,5 @@
 import { eq, and, desc, sql } from "drizzle-orm";
+import { notifyAdminsNewReport } from "../../notifications/notifications.helper";
 import { db } from "../../db";
 import {
   contentReports,
@@ -189,7 +190,12 @@ export async function createReport(
     })
     .returning();
 
-  return created;
+  // 🔔 Notif admins (fire & forget)
+    notifyAdminsNewReport(created.id, created.target_type).catch((err) =>
+      console.error("❌ Erreur notif signalement:", err)
+    );
+
+    return created;
 }
 
 export async function listReports(query: ListReportsQuery) {

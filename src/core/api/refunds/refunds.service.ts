@@ -16,6 +16,7 @@ import type {
   ListRefundsQuery,
 } from "./refunds.validation";
 import {
+  notifyAdminsNewRefund,
   notifyRefundRequested,
   notifyRefundApproved,
   notifyRefundRejected,
@@ -133,6 +134,11 @@ export async function requestRefund(
   } catch (err) {
     console.error("❌ Erreur préparation notif refund:", err);
   }
+
+  // 🔔 Notif admins (fire & forget)
+  notifyAdminsNewRefund(created.id, order_id).catch((err) =>
+    console.error("❌ Erreur notif refund admin:", err)
+  );
 
   return created;
 }
