@@ -18,6 +18,7 @@ import {
   adminSuspend,
   adminUnsuspend,
   adminDeleteUser,
+  skipProfileOnboarding,
 } from "./users.controller";
 import {
   postBlock,
@@ -39,6 +40,7 @@ router.get("/me", authMiddleware, asyncHandler(getMe));
 router.put("/me", authMiddleware, asyncHandler(updateMe));
 router.put("/me/privacy", authMiddleware, asyncHandler(putPrivacy));
 router.post("/me/become-pro", authMiddleware, asyncHandler(becomePro));
+router.post("/me/profile/skip", authMiddleware, asyncHandler(skipProfileOnboarding));
 
 // ============================================================
 // ADMIN — SUSPENSION / SUPPRESSION

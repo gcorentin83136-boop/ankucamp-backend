@@ -33,6 +33,7 @@ const publicColumns = {
   website: users.website,
   location: users.location,
   is_private: users.is_private,
+  profile_completed: users.profile_completed,
   provider: users.provider,
   role: users.role,
   email_verified: users.email_verified,
@@ -388,4 +389,24 @@ export async function anonymizeUser(userId: number) {
   console.log(`🗑️ User #${userId} anonymisé`);
 
   return { success: true };
+}
+
+// ============================================================
+// SKIP COMPLÉTION DE PROFIL
+// ============================================================
+
+/**
+ * Marque le profil comme "vu" sans le compléter.
+ * Utilisé quand l'user clique "Passer" sur la modale d'onboarding.
+ * La popup ne reviendra plus à la prochaine connexion.
+ */
+export async function skipProfileCompletion(userId: number) {
+  const [updated] = await db
+    .update(users)
+    .set({ profile_completed: 1 })
+    .where(eq(users.id, userId))
+    .returning({ id: users.id, profile_completed: users.profile_completed });
+
+  if (!updated) throw new AppError("Utilisateur introuvable", 404);
+  return updated;
 }

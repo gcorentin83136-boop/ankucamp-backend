@@ -32,6 +32,7 @@ export const users = pgTable("users", {
   latitude: numeric("latitude", { precision: 10, scale: 7 }),
   longitude: numeric("longitude", { precision: 10, scale: 7 }),
   is_private: integer("is_private").default(0).notNull(),
+  profile_completed: integer("profile_completed").default(0).notNull(),
   password_hash: varchar("password_hash", { length: 255 }),
   provider: varchar("provider", { length: 50 }).default("local").notNull(),
   provider_id: varchar("provider_id", { length: 255 }),

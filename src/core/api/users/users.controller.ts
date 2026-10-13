@@ -10,6 +10,7 @@ import {
   updateUser,
   updatePrivacy,
   getUserStats,
+  skipProfileCompletion,
 } from "./users.service";
 import {
   updateProfileSchema,
@@ -285,5 +286,24 @@ export async function adminDeleteUser(req: AuthRequest, res: Response) {
   return res.json({
     ...result,
     message: "Compte supprimé définitivement",
+  });
+}
+
+// ============================================================
+// ONBOARDING — Complétion de profil
+// ============================================================
+
+/**
+ * POST /users/me/profile/skip
+ * Marque le profil comme complété (skip de la modale d'onboarding).
+ */
+export async function skipProfileOnboarding(req: AuthRequest, res: Response) {
+  if (!req.user) throw new AppError("Non authentifié", 401);
+
+  const updated = await skipProfileCompletion(req.user.id);
+  return res.json({
+    success: true,
+    message: "Profil marqué comme complété",
+    user: updated,
   });
 }
