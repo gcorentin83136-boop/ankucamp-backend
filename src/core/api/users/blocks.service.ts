@@ -305,10 +305,11 @@ export async function assertCanInteract(
 ): Promise<void> {
   if (actorId === targetId) return;
 
-  const [iBlocked, iRestricted, theyBlocked] = await Promise.all([
+  const [iBlocked, iRestricted, theyBlocked, theyRestricted] = await Promise.all([
     isBlocked(actorId, targetId),
     isRestricted(actorId, targetId),
     isBlocked(targetId, actorId),
+    isRestricted(targetId, actorId),
   ]);
 
   if (iBlocked) {
@@ -323,6 +324,12 @@ export async function assertCanInteract(
   if (theyBlocked) {
     throw new AppError(
       `Tu ne peux pas ${action} cet utilisateur (tu es bloqué)`,
+      403
+    );
+  }
+  if (theyRestricted) {
+    throw new AppError(
+      `Tu ne peux pas ${action} cet utilisateur (tu es restreint)`,
       403
     );
   }
