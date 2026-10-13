@@ -2,6 +2,7 @@ import { eq, and, or, ilike, desc, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { users, posts, friendships, reviews } from "../../db/schema";
 import { AppError } from "../../errors/AppError";
+import { getHiddenUserIds } from "./blocks.service";
 import {
   notifyUserSuspended,
   notifyUserUnsuspended,
@@ -45,24 +46,44 @@ const publicColumns = {
 // LECTURE
 // ============================================================
 
-export async function getUserById(id: number) {
+export async function getUserById(id: number, viewerId?: number) {
   const [user] = await db
     .select(publicColumns)
     .from(users)
     .where(eq(users.id, id))
     .limit(1);
 
-  return user ?? null;
+  if (!user) return null;
+
+  // 🚫 Bloquer l'accès si viewer a bloqué target OU inversement
+  if (viewerId && viewerId !== id) {
+    const hidden = await getHiddenUserIds(viewerId);
+    if (hidden.includes(id)) {
+      throw new AppError("Cet utilisateur n'est pas disponible", 403);
+    }
+  }
+
+  return user;
 }
 
-export async function getUserByUsername(username: string) {
+export async function getUserByUsername(username: string, viewerId?: number) {
   const [user] = await db
     .select(publicColumns)
     .from(users)
     .where(eq(users.username, username))
     .limit(1);
 
-  return user ?? null;
+  if (!user) return null;
+
+  // 🚫 Bloquer l'accès si viewer a bloqué target OU inversement
+  if (viewerId && viewerId !== user.id) {
+    const hidden = await getHiddenUserIds(viewerId);
+    if (hidden.includes(user.id)) {
+      throw new AppError("Cet utilisateur n'est pas disponible", 403);
+    }
+  }
+
+  return user;
 }
 
 /**

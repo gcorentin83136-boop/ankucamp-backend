@@ -109,13 +109,14 @@ export async function getAll(req: Request, res: Response) {
   return res.json({ success: true, count: list.length, users: list });
 }
 
-export async function getOne(req: Request, res: Response) {
+export async function getOne(req: AuthRequest, res: Response) {
   const id = Number(req.params.id);
   if (isNaN(id)) {
     throw new AppError("ID invalide", 400);
   }
 
-  const user = await getUserById(id);
+  const viewerId = req.user?.id;
+  const user = await getUserById(id, viewerId);
   if (!user) {
     throw new AppError("Utilisateur introuvable", 404);
   }
@@ -126,13 +127,14 @@ export async function getOne(req: Request, res: Response) {
 /**
  * Récupère un user par username (profil public).
  */
-export async function getByUsername(req: Request, res: Response) {
+export async function getByUsername(req: AuthRequest, res: Response) {
   const username = req.params.username;
   if (!username) {
     throw new AppError("Username requis", 400);
   }
 
-  const user = await getUserByUsername(username);
+  const viewerId = req.user?.id;
+  const user = await getUserByUsername(username, viewerId);
   if (!user) {
     throw new AppError("Utilisateur introuvable", 404);
   }

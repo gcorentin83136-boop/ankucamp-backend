@@ -91,7 +91,7 @@ router.get("/:id/block-status", authMiddleware, asyncHandler(getBlockStatus));
 router.get("/", asyncHandler(getAll));
 
 // Route specifique AVANT /:id
-router.get("/u/:username", asyncHandler(getByUsername));
+router.get("/u/:username", authOptionalMiddleware, asyncHandler(getByUsername));
 
 // Stats + amis d'un user
 router.get("/:id/stats", asyncHandler(getStats));
@@ -100,6 +100,6 @@ router.get("/:id/stats", asyncHandler(getStats));
 router.get("/:id/friends", authOptionalMiddleware, asyncHandler(getFriends));
 
 // Route dynamique generique EN DERNIER
-router.get("/:id", asyncHandler(getOne));
+router.get("/:id", authOptionalMiddleware, asyncHandler(getOne));
 
 export default router;
