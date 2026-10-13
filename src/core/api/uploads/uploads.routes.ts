@@ -2,6 +2,7 @@ import { Router } from "express";
 import { authMiddleware } from "../../middlewares/auth.middleware";
 import {
   upload,
+  uploadCover as uploadCoverMw,
   uploadDocument,
   uploadVideo,
 } from "../../middlewares/upload.middleware";
@@ -60,7 +61,7 @@ router.post(
 router.post(
   "/cover",
   authMiddleware,
-  upload.single("file"),
+  uploadCoverMw.single("file"),
   asyncHandler(uploadCover)
 );
 

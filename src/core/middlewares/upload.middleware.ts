@@ -29,6 +29,26 @@ export const upload = multer({
 });
 
 // ------------------------------------------------------------
+// Upload COVER (bannière profil + couvertures - 10 MB max)
+// ------------------------------------------------------------
+const MAX_COVER_SIZE = 10 * 1024 * 1024; // 10 MB
+
+export const uploadCover = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_COVER_SIZE },
+  fileFilter: (_req, file, cb) => {
+    if (!ALLOWED_IMAGE_TYPES.includes(file.mimetype)) {
+      return cb(
+        new AppError(
+          "Format d'image non supporté (jpeg, png, webp, gif uniquement)",
+          400
+        )
+      );
+    }
+    cb(null, true);
+  },
+});
+// ------------------------------------------------------------
 // Upload DOCUMENTS (KYC : PDF + images, 10 MB max)
 // ------------------------------------------------------------
 const MAX_DOCUMENT_SIZE = 10 * 1024 * 1024; // 10 MB
