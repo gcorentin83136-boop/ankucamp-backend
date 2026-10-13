@@ -21,6 +21,7 @@ import {
   recentOrders as sellerRecentOrders,
   verification as sellerVerification,
   summary as sellerSummary,
+  statsByPeriod as sellerStatsByPeriod,
 } from "./seller/seller.controller";
 import {
   stats as adminStats,
@@ -58,6 +59,7 @@ router.get("/buyer/spending-chart", asyncHandler(buyerSpendingChart));
 
 router.get("/seller/summary", asyncHandler(sellerSummary));
 router.get("/seller/stats", asyncHandler(sellerStats));
+router.get("/seller/stats-by-period", asyncHandler(sellerStatsByPeriod));
 router.get(
   "/seller/orders-breakdown",
   asyncHandler(sellerOrdersBreakdown)

@@ -20,3 +20,13 @@ export const chartPeriodSchema = z.object({
 });
 
 export type ChartPeriodQuery = z.infer<typeof chartPeriodSchema>;
+
+// ============================================================
+// PÉRIODE POUR LES STATS VENDEUR (7d / 30d / 6m / 12m)
+// ============================================================
+
+export const periodSchema = z.object({
+  period: z.enum(["7d", "30d", "6m", "12m"]).default("30d"),
+});
+
+export type PeriodInput = z.infer<typeof periodSchema>;

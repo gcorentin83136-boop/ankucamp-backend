@@ -1,7 +1,7 @@
 import { Response } from "express";
 import { AuthRequest } from "../../../middlewares/auth.middleware";
 import { AppError } from "../../../errors/AppError";
-import { chartPeriodSchema } from "../dashboard.validation";
+import { chartPeriodSchema, periodSchema } from "../dashboard.validation";
 import {
   getSellerStats,
   getSellerOrdersBreakdown,
@@ -12,6 +12,7 @@ import {
   getRecentOrdersToTreat,
   getSellerVerification,
   getSellerSummary,
+  getSellerStatsByPeriod,
 } from "./seller.service";
 
 // ============================================================
@@ -111,5 +112,25 @@ export async function verification(req: AuthRequest, res: Response) {
 export async function summary(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifié", 401);
   const result = await getSellerSummary(req.user.id);
+  return res.json({ success: true, ...result });
+}
+
+// ============================================================
+// GET /dashboard/seller/stats-by-period?period=7d|30d|6m|12m
+// ============================================================
+
+export async function statsByPeriod(req: AuthRequest, res: Response) {
+  if (!req.user) throw new AppError("Non authentifié", 401);
+
+  const parsed = periodSchema.safeParse(req.query);
+  if (!parsed.success) {
+    throw new AppError(
+      "Période invalide (7d, 30d, 6m, 12m)",
+      400,
+      parsed.error.flatten().fieldErrors
+    );
+  }
+
+  const result = await getSellerStatsByPeriod(req.user.id, parsed.data.period);
   return res.json({ success: true, ...result });
 }

@@ -458,3 +458,125 @@ export async function getSellerSummary(sellerId: number) {
     },
   };
 }
+
+// ============================================================
+// STATS PAR PÉRIODE (7d / 30d / 6m / 12m)
+// ============================================================
+
+export type StatsPeriod = "7d" | "30d" | "6m" | "12m";
+
+export async function getSellerStatsByPeriod(
+  sellerId: number,
+  period: StatsPeriod
+) {
+  const isDaily = period === "7d" || period === "30d";
+  const days = period === "7d" ? 7 : period === "30d" ? 30 : 0;
+  const months = period === "6m" ? 6 : period === "12m" ? 12 : 0;
+
+  const startDate = isDaily
+    ? sql`now() - (${days} || ' days')::interval`
+    : sql`now() - (${months} || ' months')::interval`;
+
+  // ===== KPI : CA sur la période =====
+  const [revenueRow] = await db
+    .select({
+      total: sql<string>`coalesce(sum(${payments.seller_amount}), 0)::text`,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(payments)
+    .where(
+      and(
+        eq(payments.seller_id, sellerId),
+        eq(payments.status, "succeeded"),
+        gte(payments.created_at, startDate)
+      )
+    );
+
+  // ===== KPI : Commandes sur la période (hors annulées/remboursées) =====
+  const [ordersRow] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(orders)
+    .where(
+      and(
+        eq(orders.seller_id, sellerId),
+        ne(orders.status, "cancelled"),
+        ne(orders.status, "refunded"),
+        gte(orders.created_at, startDate)
+      )
+    );
+
+  // ===== Chart : agrégation jour ou mois =====
+  const chartRows = isDaily
+    ? await db
+        .select({
+          bucket: sql<string>`to_char(date_trunc('day', ${payments.created_at}), 'YYYY-MM-DD')`,
+          total: sql<string>`coalesce(sum(${payments.seller_amount}), 0)::text`,
+          count: sql<number>`count(*)::int`,
+        })
+        .from(payments)
+        .where(
+          and(
+            eq(payments.seller_id, sellerId),
+            eq(payments.status, "succeeded"),
+            gte(payments.created_at, startDate)
+          )
+        )
+        .groupBy(sql`date_trunc('day', ${payments.created_at})`)
+        .orderBy(sql`date_trunc('day', ${payments.created_at})`)
+    : await db
+        .select({
+          bucket: sql<string>`to_char(date_trunc('month', ${payments.created_at}), 'YYYY-MM')`,
+          total: sql<string>`coalesce(sum(${payments.seller_amount}), 0)::text`,
+          count: sql<number>`count(*)::int`,
+        })
+        .from(payments)
+        .where(
+          and(
+            eq(payments.seller_id, sellerId),
+            eq(payments.status, "succeeded"),
+            gte(payments.created_at, startDate)
+          )
+        )
+        .groupBy(sql`date_trunc('month', ${payments.created_at})`)
+        .orderBy(sql`date_trunc('month', ${payments.created_at})`);
+
+  // ===== Top produits sur la période =====
+  const topProducts = await db
+    .select({
+      product_id: orderItems.product_id,
+      product_name: products.name,
+      total_sold: sql<number>`sum(${orderItems.quantity})::int`,
+      total_revenue: sql<string>`sum(${orderItems.unit_price} * ${orderItems.quantity})::text`,
+    })
+    .from(orderItems)
+    .innerJoin(orders, eq(orders.id, orderItems.order_id))
+    .leftJoin(products, eq(products.id, orderItems.product_id))
+    .where(
+      and(
+        eq(orders.seller_id, sellerId),
+        ne(orders.status, "cancelled"),
+        ne(orders.status, "refunded"),
+        gte(orders.created_at, startDate)
+      )
+    )
+    .groupBy(orderItems.product_id, products.name)
+    .orderBy(desc(sql`sum(${orderItems.quantity})`))
+    .limit(5);
+
+  // ===== KPI dérivés =====
+  const revenue = parseFloat(revenueRow?.total ?? "0");
+  const ordersCount = ordersRow?.count ?? 0;
+  const averageBasket = ordersCount > 0 ? revenue / ordersCount : 0;
+
+  return {
+    period,
+    kpis: {
+      revenue: revenueRow?.total ?? "0",
+      payments_count: revenueRow?.count ?? 0,
+      orders_count: ordersCount,
+      average_basket: averageBasket.toFixed(2),
+    },
+    chart: chartRows,
+    top_products: topProducts,
+  };
+}
