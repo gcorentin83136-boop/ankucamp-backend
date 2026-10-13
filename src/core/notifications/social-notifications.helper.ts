@@ -10,14 +10,16 @@ import { notify } from "./notifications.helper";
 export async function notifyPostLiked(
   postAuthorId: number,
   postId: number,
-  likerName: string
+  likerName: string,
+  likerId?: number
 ): Promise<void> {
   await notify(
     postAuthorId,
     "social",
     `❤️ ${likerName} a aimé ton post`,
     `Ton post a reçu un nouveau like.`,
-    `/posts/${postId}`
+    `/posts/${postId}`,
+    likerId ? { actorId: likerId } : undefined
   );
 }
 
@@ -27,14 +29,16 @@ export async function notifyPostLiked(
 export async function notifyPostCommented(
   postAuthorId: number,
   postId: number,
-  commenterName: string
+  commenterName: string,
+  commenterId?: number
 ): Promise<void> {
   await notify(
     postAuthorId,
     "social",
     `💬 ${commenterName} a commenté ton post`,
     `Clique pour voir le commentaire.`,
-    `/posts/${postId}`
+    `/posts/${postId}`,
+    commenterId ? { actorId: commenterId } : undefined
   );
 }
 
@@ -44,14 +48,16 @@ export async function notifyPostCommented(
 export async function notifyCommentReplied(
   commentAuthorId: number,
   postId: number,
-  replierName: string
+  replierName: string,
+  replierId?: number
 ): Promise<void> {
   await notify(
     commentAuthorId,
     "social",
     `↩️ ${replierName} a répondu à ton commentaire`,
     `Clique pour voir la réponse.`,
-    `/posts/${postId}`
+    `/posts/${postId}`,
+    replierId ? { actorId: replierId } : undefined
   );
 }
 
@@ -61,14 +67,16 @@ export async function notifyCommentReplied(
 export async function notifyMentioned(
   userId: number,
   postId: number,
-  mentionerName: string
+  mentionerName: string,
+  mentionerId?: number
 ): Promise<void> {
   await notify(
     userId,
     "social",
     `📣 ${mentionerName} t'a mentionné`,
     `Clique pour voir la mention.`,
-    `/posts/${postId}`
+    `/posts/${postId}`,
+    mentionerId ? { actorId: mentionerId } : undefined
   );
 }
 
@@ -85,7 +93,8 @@ export async function notifyFriendRequest(
     "social",
     `👥 Nouvelle demande d'ami`,
     `${requesterName} souhaite devenir ton ami.`,
-    `/friends/requests`
+    `/friends?tab=requests`,
+    { actorId: requesterId }
   );
 }
 
@@ -94,14 +103,16 @@ export async function notifyFriendRequest(
  */
 export async function notifyFriendAccepted(
   requesterId: number,
-  accepterName: string
+  accepterName: string,
+  accepterId?: number
 ): Promise<void> {
   await notify(
     requesterId,
     "social",
     `✅ Demande d'ami acceptée`,
     `${accepterName} a accepté ta demande d'ami.`,
-    `/friends`
+    `/friends`,
+    accepterId ? { actorId: accepterId } : undefined
   );
 }
 
@@ -110,14 +121,16 @@ export async function notifyFriendAccepted(
  */
 export async function notifyNewFollower(
   sellerId: number,
-  followerName: string
+  followerName: string,
+  followerId?: number
 ): Promise<void> {
   await notify(
     sellerId,
     "social",
     `⭐ Nouvel abonné`,
     `${followerName} suit maintenant ta boutique.`,
-    `/dashboard/followers`
+    `/dashboard/shop`,
+    followerId ? { actorId: followerId } : undefined
   );
 }
 
@@ -129,19 +142,21 @@ export async function notifyNewMessage(
   conversationId: number,
   messageId: number,
   senderFirstName: string,
-  preview: string
+  preview: string,
+  senderId?: number
 ): Promise<void> {
   await notify(
     userId,
     "message",
     `💬 Nouveau message de ${senderFirstName}`,
     preview,
-    `/messages/${conversationId}`
+    `/messages/${conversationId}`,
+    senderId ? { actorId: senderId } : undefined
   );
 }
 
 // ============================================================
-// NOTIFICATIONS ÉVÉNEMENTS (réseau social)
+// NOTIFICATIONS ÉVÉNEMENTS
 // ============================================================
 
 /**
@@ -151,7 +166,8 @@ export async function notifyFriendsNewEvent(
   friendIds: number[],
   eventId: number,
   eventTitle: string,
-  organizerName: string
+  organizerName: string,
+  organizerId?: number
 ): Promise<void> {
   if (friendIds.length === 0) return;
 
@@ -162,7 +178,8 @@ export async function notifyFriendsNewEvent(
         "social",
         `📅 ${organizerName} organise un événement`,
         `"${eventTitle}" — clique pour voir les détails.`,
-        `/events/${eventId}`
+        `/events?event=${eventId}`,
+        organizerId ? { actorId: organizerId } : undefined
       ).catch((err) =>
         console.error(`❌ Erreur notif event ami ${friendId}:`, err)
       )
@@ -177,7 +194,8 @@ export async function notifyFriendsNewRegistration(
   friendIds: number[],
   eventId: number,
   eventTitle: string,
-  friendName: string
+  friendName: string,
+  registrantId?: number
 ): Promise<void> {
   if (friendIds.length === 0) return;
 
@@ -188,7 +206,8 @@ export async function notifyFriendsNewRegistration(
         "social",
         `🎟️ ${friendName} participe à un événement`,
         `"${eventTitle}" — rejoins-le !`,
-        `/events/${eventId}`
+        `/events?event=${eventId}`,
+        registrantId ? { actorId: registrantId } : undefined
       ).catch((err) =>
         console.error(`❌ Erreur notif inscription ami ${friendId}:`, err)
       )
@@ -203,17 +222,18 @@ export async function notifyEventLiked(
   organizerId: number,
   eventId: number,
   eventTitle: string,
-  likerName: string
+  likerName: string,
+  likerId?: number
 ): Promise<void> {
   await notify(
     organizerId,
     "social",
     `❤️ ${likerName} a aimé ton événement`,
     `"${eventTitle}"`,
-    `/events/${eventId}`
+    `/events?event=${eventId}`,
+    likerId ? { actorId: likerId } : undefined
   );
 }
-
 
 /**
  * Notifie les amis qu'un user a publié un nouveau post.
@@ -222,7 +242,8 @@ export async function notifyFriendsNewPost(
   friendIds: number[],
   postId: number,
   authorName: string,
-  preview: string
+  preview: string,
+  authorId?: number
 ): Promise<void> {
   if (friendIds.length === 0) return;
 
@@ -235,7 +256,8 @@ export async function notifyFriendsNewPost(
         "social",
         `📝 ${authorName} a publié un post`,
         shortPreview,
-        `/feed?post=${postId}`
+        `/feed?post=${postId}`,
+        authorId ? { actorId: authorId } : undefined
       ).catch((err) =>
         console.error(`❌ Erreur notif post ami ${friendId}:`, err)
       )

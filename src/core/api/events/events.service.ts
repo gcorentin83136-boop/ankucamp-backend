@@ -396,7 +396,8 @@ export async function createEvent(
           friendIds,
           created.id,
           created.title,
-          organizerName
+          organizerName,
+          organizerId
         ).catch((err) =>
           console.error("❌ Erreur notif event amis:", err)
         );
@@ -605,7 +606,8 @@ export async function registerToEvent(eventId: number, userId: number) {
         friendIds,
         event.id,
         event.title,
-        friendName
+        friendName,
+        userId
       ).catch((err) =>
         console.error("❌ Erreur notif inscription amis:", err)
       );

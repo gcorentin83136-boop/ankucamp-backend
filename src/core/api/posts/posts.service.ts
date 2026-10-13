@@ -245,7 +245,8 @@ export async function createPost(authorId: number, input: CreatePostInput) {
             friendIds,
             created.id,
             authorName,
-            content ?? ""
+            content ?? "",
+            authorId
           ).catch((err) =>
             console.error("❌ Erreur notif post amis:", err)
           );
@@ -515,7 +516,8 @@ export async function toggleLike(postId: number, userId: number) {
         notifyPostLiked(
           post.author_id,
           postId,
-          `${liker.first_name} ${liker.last_name}`
+          `${liker.first_name} ${liker.last_name}`,
+          userId
         ).catch((err) => console.error("❌ Erreur notif like:", err));
       }
     }
@@ -616,7 +618,7 @@ export async function addComment(
       : "Quelqu'un";
 
     if (post.author_id !== authorId) {
-      notifyPostCommented(post.author_id, postId, commenterName).catch((err) =>
+      notifyPostCommented(post.author_id, postId, commenterName, authorId).catch((err) =>
         console.error("❌ Erreur notif comment:", err)
       );
     }
@@ -633,7 +635,7 @@ export async function addComment(
         parent.author_id !== authorId &&
         parent.author_id !== post.author_id
       ) {
-        notifyCommentReplied(parent.author_id, postId, commenterName).catch(
+        notifyCommentReplied(parent.author_id, postId, commenterName, authorId).catch(
           (err) => console.error("❌ Erreur notif reply:", err)
         );
       }
@@ -862,7 +864,8 @@ export async function toggleEventLike(eventId: number, userId: number) {
           event.organizer_id,
           eventId,
           event.title,
-          `${liker.first_name} ${liker.last_name}`
+          `${liker.first_name} ${liker.last_name}`,
+          userId
         ).catch((err) => console.error("❌ Erreur notif like event:", err));
       }
     }

@@ -49,7 +49,7 @@ export async function toggleFollow(shopId: number, userId: number) {
 
       if (follower) {
         const name = `${follower.first_name} ${follower.last_name}`.trim();
-        notifyNewFollower(shop.owner_id, name).catch((err) =>
+        notifyNewFollower(shop.owner_id, name, userId).catch((err) =>
           console.error("❌ Erreur notif follow:", err)
         );
       }

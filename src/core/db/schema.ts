@@ -266,6 +266,7 @@ export const messageReactions = pgTable("message_reactions", {
 export const notifications = pgTable("notifications", {
   id: serial("id").primaryKey(),
   user_id: integer("user_id").notNull(),
+    actor_id: integer("actor_id"),
   type: varchar("type", { length: 50 }).notNull(),
   title: varchar("title", { length: 255 }).notNull(),
   content: text("content").notNull(),

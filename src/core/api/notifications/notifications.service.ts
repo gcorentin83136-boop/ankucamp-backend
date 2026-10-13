@@ -1,4 +1,5 @@
-import { and, eq, desc, sql } from "drizzle-orm";
+import { and, eq, desc, sql , notInArray , isNull } from "drizzle-orm";
+import { getHiddenUserIds } from "../users/blocks.service";
 import { db } from "../../db";
 import { notifications } from "../../db/schema";
 import { AppError } from "../../errors/AppError";
@@ -110,10 +111,17 @@ export interface CreateNotificationInput {
 export async function createNotification(input: CreateNotificationInput) {
   const { userId, type, title, content, link, data } = input;
 
+  // 🚫 Extraction de l'actorId depuis data (filtrage des bloqués)
+  const actorId =
+    data && typeof data === "object" && "actorId" in data
+      ? Number((data as any).actorId) || null
+      : null;
+
   const [created] = await db
     .insert(notifications)
     .values({
       user_id: userId,
+      actor_id: actorId,
       type,
       title,
       content,
