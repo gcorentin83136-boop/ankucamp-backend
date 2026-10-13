@@ -152,6 +152,34 @@ export async function updateUser(id: number, data: UpdateProfileInput) {
     throw new AppError("Aucune donnÃ©e Ã  mettre Ã  jour", 400);
   }
 
+    // 🎯 Marque automatiquement le profil comme complété si avatar OU bio présents
+    const [currentUser] = await db
+      .select({
+        avatar_url: users.avatar_url,
+        bio: users.bio,
+        profile_completed: users.profile_completed,
+      })
+      .from(users)
+      .where(eq(users.id, id))
+      .limit(1);
+
+    if (currentUser && !currentUser.profile_completed) {
+      const futureAvatar =
+        cleanData.avatar_url !== undefined
+          ? cleanData.avatar_url
+          : currentUser.avatar_url;
+      const futureBio =
+        cleanData.bio !== undefined ? cleanData.bio : currentUser.bio;
+      const hasAvatar =
+        !!futureAvatar && String(futureAvatar).trim().length > 0;
+      const hasBio =
+        !!futureBio && String(futureBio).trim().length > 0;
+      if (hasAvatar || hasBio) {
+        cleanData.profile_completed = 1;
+      }
+    }
+
+
   // VÃ©rif unicitÃ© email si changÃ©
   if (cleanData.email) {
     const existing = await db
