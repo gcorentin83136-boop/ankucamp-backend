@@ -10,6 +10,7 @@ import {
   createOneShop,
   updateOneShop,
   deleteOneShop,
+  geocodeOneShop,
 } from "./shops.controller";
 
 const router = Router();
@@ -28,6 +29,7 @@ router.post(
 );
 
 router.get("/:id", asyncHandler(getOneShop));
+router.post("/:id/geocode", authMiddleware, asyncHandler(geocodeOneShop));
 router.put("/:id", authMiddleware, asyncHandler(updateOneShop));
 router.delete("/:id", authMiddleware, asyncHandler(deleteOneShop));
 

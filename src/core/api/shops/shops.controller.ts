@@ -9,6 +9,7 @@ import {
   getShopsByOwner,
   getShopsNearby,
   createShop,
+  geocodeShop,
   updateShop,
   deleteShop,
 } from "./shops.service";
@@ -105,4 +106,17 @@ export async function deleteOneShop(req: AuthRequest, res: Response) {
 
   await deleteShop(id, req.user.id);
   return res.status(204).send();
+}
+// ============================================================
+// POST /shops/:id/geocode
+// Force le géocodage manuel d'une boutique
+// ============================================================
+
+export async function geocodeOneShop(req: AuthRequest, res: Response) {
+  if (!req.user) throw new AppError("Non authentifié", 401);
+  const shopId = Number(req.params.id);
+  if (isNaN(shopId)) throw new AppError("ID invalide", 400);
+
+  const result = await geocodeShop(shopId, req.user.id);
+  return res.json(result);
 }

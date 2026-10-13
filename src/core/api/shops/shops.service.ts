@@ -306,3 +306,51 @@ export async function deleteShop(shopId: number, userId: number) {
 
   await db.delete(shops).where(eq(shops.id, shopId));
 }
+// ============================================================
+// GÉOCODAGE MANUEL D'UNE BOUTIQUE
+// ============================================================
+
+export async function geocodeShop(shopId: number, userId: number) {
+  const [shop] = await db
+    .select()
+    .from(shops)
+    .where(eq(shops.id, shopId))
+    .limit(1);
+
+  if (!shop) throw new AppError("Boutique introuvable", 404);
+  if (shop.owner_id !== userId) {
+    throw new AppError("Non propriétaire de la boutique", 403);
+  }
+
+  const query =
+    shop.address?.trim() ||
+    [shop.postal_code, shop.city].filter(Boolean).join(' ').trim();
+
+  if (!query) {
+    throw new AppError(
+      "Aucune adresse, ville ou code postal à géocoder",
+      400
+    );
+  }
+
+  const result = await geocodeAddress(query);
+
+  await db
+    .update(shops)
+    .set({
+      latitude: String(result.latitude),
+      longitude: String(result.longitude),
+      ...(shop.city ? {} : { city: result.city }),
+      ...(shop.postal_code ? {} : { postal_code: result.postal_code }),
+    })
+    .where(eq(shops.id, shopId));
+
+  return {
+    success: true,
+    latitude: result.latitude,
+    longitude: result.longitude,
+    label: result.label,
+    city: result.city,
+    postal_code: result.postal_code,
+  };
+}
