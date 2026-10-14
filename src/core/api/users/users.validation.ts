@@ -27,7 +27,9 @@ export const updateProfileSchema = z.object({
   // Profil public (nouveaux champs)
   bio: z.string().max(500, "La bio ne peut pas dépasser 500 caractères").optional().nullable(),
   website: z.string().url().max(255).optional().nullable().or(z.literal("")),
-  location: z.string().max(255).optional().nullable(),
+  location: z.string().max(255).optional().nullable(),
+  latitude: z.number().min(-90).max(90).optional().nullable(),
+  longitude: z.number().min(-180).max(180).optional().nullable(),
   cover_url: z.string().url().optional().nullable(),
 });
 
