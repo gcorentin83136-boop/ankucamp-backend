@@ -32,6 +32,8 @@ const publicColumns = {
   bio: users.bio,
   website: users.website,
   location: users.location,
+  latitude: users.latitude,
+  longitude: users.longitude,
   is_private: users.is_private,
   profile_completed: users.profile_completed,
   provider: users.provider,

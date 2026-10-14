@@ -193,6 +193,8 @@ export async function loginUser(
       bio: user.bio,
       website: user.website,
       location: user.location,
+      latitude: user.latitude,
+      longitude: user.longitude,
       city: user.city,
       country: user.country,
       is_private: user.is_private,
