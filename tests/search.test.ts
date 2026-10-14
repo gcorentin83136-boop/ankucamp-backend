@@ -45,7 +45,7 @@ describe("Search — GET /search/all", () => {
   });
 
   it("rejette limit_per_type > 50 (400)", async () => {
-    const res = await request(app).get("/search/all?q=a&limit_per_type=20");
+    const res = await request(app).get("/search/all?q=a&limit_per_type=51");
     expect(res.status).toBe(400);
   });
 });
