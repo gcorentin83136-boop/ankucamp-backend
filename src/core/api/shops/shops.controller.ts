@@ -10,6 +10,7 @@ import {
   getShopsNearby,
   createShop,
   geocodeShop,
+  updateShopLocation,
   updateShop,
   deleteShop,
 } from "./shops.service";
@@ -118,5 +119,29 @@ export async function geocodeOneShop(req: AuthRequest, res: Response) {
   if (isNaN(shopId)) throw new AppError("ID invalide", 400);
 
   const result = await geocodeShop(shopId, req.user.id);
+  return res.json(result);
+}
+
+// ============================================================
+// PUT /shops/:id/location
+// ============================================================
+
+export async function updateLocation(req: AuthRequest, res: Response) {
+  if (!req.user) throw new AppError("Non authentifié", 401);
+  const shopId = Number(req.params.id);
+  if (isNaN(shopId)) throw new AppError("ID invalide", 400);
+
+  const { latitude, longitude, city, postal_code, address } = req.body;
+  if (typeof latitude !== "number" || typeof longitude !== "number") {
+    throw new AppError("Latitude et longitude requis (nombres)", 400);
+  }
+
+  const result = await updateShopLocation(shopId, req.user.id, {
+    latitude,
+    longitude,
+    city,
+    postal_code,
+    address,
+  });
   return res.json(result);
 }

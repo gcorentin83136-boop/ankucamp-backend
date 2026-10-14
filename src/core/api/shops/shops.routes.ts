@@ -11,6 +11,7 @@ import {
   updateOneShop,
   deleteOneShop,
   geocodeOneShop,
+  updateLocation,
 } from "./shops.controller";
 
 const router = Router();
@@ -30,6 +31,7 @@ router.post(
 
 router.get("/:id", asyncHandler(getOneShop));
 router.post("/:id/geocode", authMiddleware, asyncHandler(geocodeOneShop));
+router.put("/:id/location", authMiddleware, asyncHandler(updateLocation));
 router.put("/:id", authMiddleware, asyncHandler(updateOneShop));
 router.delete("/:id", authMiddleware, asyncHandler(deleteOneShop));
 

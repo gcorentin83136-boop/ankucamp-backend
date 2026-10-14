@@ -354,3 +354,44 @@ export async function geocodeShop(shopId: number, userId: number) {
     postal_code: result.postal_code,
   };
 }
+
+// ============================================================
+// MISE À JOUR DIRECTE DE LA POSITION (sans géocodage)
+// ============================================================
+
+export async function updateShopLocation(
+  shopId: number,
+  userId: number,
+  data: {
+    latitude: number
+    longitude: number
+    city?: string
+    postal_code?: string
+    address?: string
+  }
+) {
+  const [shop] = await db
+    .select()
+    .from(shops)
+    .where(eq(shops.id, shopId))
+    .limit(1);
+
+  if (!shop) throw new AppError("Boutique introuvable", 404);
+  if (shop.owner_id !== userId) {
+    throw new AppError("Non propriétaire de la boutique", 403);
+  }
+
+  const [updated] = await db
+    .update(shops)
+    .set({
+      latitude: String(data.latitude),
+      longitude: String(data.longitude),
+      ...(data.city ? { city: data.city } : {}),
+      ...(data.postal_code ? { postal_code: data.postal_code } : {}),
+      ...(data.address ? { address: data.address } : {}),
+    })
+    .where(eq(shops.id, shopId))
+    .returning();
+
+  return { success: true, shop: updated };
+}
