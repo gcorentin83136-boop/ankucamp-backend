@@ -231,7 +231,19 @@ async function generateUniqueShopSlug(
 }
 
 export async function createShop(ownerId: number, input: CreateShopInput) {
-  await maybeGeocode(input);
+  // 📍 La position vient de l'utilisateur (settings/inscription) → on l'hérite
+  const [owner] = await db
+    .select({ latitude: users.latitude, longitude: users.longitude, city: users.city, postal_code: users.postal_code })
+    .from(users)
+    .where(eq(users.id, ownerId))
+    .limit(1);
+
+  if (owner?.latitude && owner?.longitude) {
+    input.latitude = Number(owner.latitude);
+    input.longitude = Number(owner.longitude);
+    if (!input.city && owner.city) input.city = owner.city;
+    if (!input.postal_code && owner.postal_code) input.postal_code = owner.postal_code;
+  }
 
   const [created] = await db
     .insert(shops)
