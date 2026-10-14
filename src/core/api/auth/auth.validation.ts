@@ -17,7 +17,9 @@ export const registerSchema = z.object({
   address: z.string().min(5, "Adresse trop courte").max(255),
   city: z.string().min(2).max(100),
   postal_code: z.string().min(3).max(20),
-  country: z.string().min(2).max(100).default("France"),
+  country: z.string().min(2).max(100).default("France"),
+    latitude: z.number().min(-90).max(90).optional().nullable(),
+    longitude: z.number().min(-180).max(180).optional().nullable(),
 
   // Auth
   password: z.string().min(8, "Le mot de passe doit faire au moins 8 caractères"),
