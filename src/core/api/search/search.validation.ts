@@ -85,7 +85,7 @@ export type SearchProductsQuery = z.infer<typeof searchProductsQuerySchema>;
 
 export const searchAllQuerySchema = z.object({
   q: z.string().min(1).max(100),
-  limit_per_type: z.coerce.number().int().min(1).max(10).default(5),
+  limit_per_type: z.coerce.number().int().min(1).max(50).default(5),
   lat: z.coerce.number().min(-90).max(90).optional(),
   lng: z.coerce.number().min(-180).max(180).optional(),
   radius: z.coerce.number().min(1).max(500).default(25),
