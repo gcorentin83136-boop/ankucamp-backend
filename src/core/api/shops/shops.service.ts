@@ -83,7 +83,14 @@ async function maybeGeocode(
 
   if (hasCoords) return;
   if (!input.address) return;
-  if (existingShop?.latitude && existingShop?.longitude) return;
+  if (existingShop?.latitude && existingShop?.longitude) {
+      const existingAny = existingShop as any;
+      const addressChanged =
+        (input.address && existingAny.address && input.address !== existingAny.address) ||
+        (input.city && existingAny.city && input.city !== existingAny.city) ||
+        (input.postal_code && existingAny.postal_code && input.postal_code !== existingAny.postal_code);
+      if (!addressChanged) return;
+    }
 
   try {
     const result = await geocodeAddress(input.address);
