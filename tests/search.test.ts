@@ -44,7 +44,7 @@ describe("Search — GET /search/all", () => {
     expect(res.body.products.length).toBeLessThanOrEqual(2);
   });
 
-  it("rejette limit_per_type > 10 (400)", async () => {
+  it("rejette limit_per_type > 50 (400)", async () => {
     const res = await request(app).get("/search/all?q=a&limit_per_type=20");
     expect(res.status).toBe(400);
   });
