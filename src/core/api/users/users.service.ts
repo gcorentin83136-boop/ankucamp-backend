@@ -40,6 +40,7 @@ const publicColumns = {
   role: users.role,
   email_verified: users.email_verified,
   verification_status: users.verification_status,
+    stripe_account_status: users.stripe_account_status,
   suspended_until: users.suspended_until,
   suspension_reason: users.suspension_reason,
   created_at: users.created_at,

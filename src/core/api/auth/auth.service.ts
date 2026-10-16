@@ -209,6 +209,7 @@ export async function loginUser(
       is_private: user.is_private,
       profile_completed: user.profile_completed,
       verification_status: user.verification_status,
+      stripe_account_status: user.stripe_account_status,
       email_verified: user.email_verified,
       provider: user.provider,
       created_at: user.created_at,
