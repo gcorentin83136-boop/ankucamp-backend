@@ -9,7 +9,7 @@ import { notifyNewOrder, notifyOrderConfirmed } from "../../notifications/notifi
 
 const FRONTEND_URL =
   env.NODE_ENV === "development"
-    ? "http://localhost:3000"
+    ? "http://localhost:5173"
     : "https://ankucamp.com";
 
 // ============================================================
@@ -85,6 +85,7 @@ export async function getConnectStatus(userId: number) {
   if (!user.stripe_account_id) {
     return {
       status: "not_connected",
+      has_account: false,
       charges_enabled: false,
       payouts_enabled: false,
     };
@@ -113,6 +114,7 @@ export async function getConnectStatus(userId: number) {
 
   return {
     status,
+    has_account: true,
     charges_enabled: chargesEnabled,
     payouts_enabled: payoutsEnabled,
     account_id: account.id,
