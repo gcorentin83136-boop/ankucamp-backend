@@ -197,6 +197,7 @@ export async function createCheckoutSession(
   const session = await stripe.checkout.sessions.create({
     mode: "payment",
     payment_method_types: ["card"],
+
     line_items: lineItems,
     success_url: `${FRONTEND_URL}/payment/success?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${FRONTEND_URL}/payment/cancel`,
@@ -205,11 +206,13 @@ export async function createCheckoutSession(
       buyer_id: String(buyerId),
       seller_id: String(seller.id),
     },
+    customer_creation: "always",
     payment_intent_data: {
       application_fee_amount: applicationFee,
       transfer_data: {
         destination: seller.stripe_account_id,
       },
+      setup_future_usage: "off_session",
     },
   });
 
