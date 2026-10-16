@@ -333,6 +333,31 @@ export async function updateOrderStatus(
         400
       );
     }
+
+    // 🆕 Si la commande est 'confirmed', elle a déjà été payée via Stripe.
+    // → créer automatiquement une demande de remboursement (pending).
+    //    L'admin la validera depuis /admin/refunds pour déclencher
+    //    le vrai remboursement Stripe (reverse_transfer + refund_fee).
+    if (order.status === "confirmed") {
+      try {
+        const { requestRefund } = await import(
+          "../refunds/refunds.service"
+        );
+        await requestRefund(order.buyer_id, {
+          order_id: orderId,
+          reason: "Annulation de la commande par l'acheteur",
+        });
+        console.log(
+          `💰 Demande de remboursement créée auto pour commande #${orderId}`
+        );
+      } catch (err: any) {
+        console.error(
+          "❌ Erreur création refund auto (annulation non bloquée):",
+          err?.message ?? err
+        );
+        // On ne bloque PAS l'annulation si la création échoue
+      }
+    }
   } else {
     if (!isSeller) {
       throw new AppError(
