@@ -11,6 +11,7 @@ import {
   handleStripeEvent,
   createConnectOnboardingLink,
   getConnectStatus,
+  disconnectStripeAccount,
 } from "./payments.service";
 import { stripe } from "../../../config/stripe";
 import { env } from "../../../config/env";
@@ -115,6 +116,19 @@ export async function connectStatus(req: AuthRequest, res: Response) {
   return res.json({ success: true, ...status });
 }
 
+// ============================================================
+// POST /payments/connect/disconnect
+// ============================================================
+export async function disconnectConnect(req: AuthRequest, res: Response) {
+  if (!req.user) throw new AppError("Non authentifié", 401);
+
+  await disconnectStripeAccount(req.user.id);
+
+  return res.json({
+    success: true,
+    message: "Compte Stripe déconnecté",
+  });
+}
 // ============================================================
 // GET /payments/seller/me — Commissions ANKU sur mes ventes
 // ============================================================

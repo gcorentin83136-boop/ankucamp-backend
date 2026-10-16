@@ -11,6 +11,7 @@ import {
   getOneByOrder,
   onboardConnect,
   connectStatus,
+  disconnectConnect,
 } from "./payments.controller";
 
 const router = Router();
@@ -33,6 +34,7 @@ router.get("/order/:orderId", authMiddleware, asyncHandler(getOneByOrder));
 
 // Stripe Connect (onboarding pro)
 router.post("/connect/onboard", authMiddleware, asyncHandler(onboardConnect));
+router.post("/connect/disconnect", authMiddleware, asyncHandler(disconnectConnect));
 router.get("/connect/status", authMiddleware, asyncHandler(connectStatus));
 
 export default router;

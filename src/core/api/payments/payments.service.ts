@@ -122,6 +122,48 @@ export async function getConnectStatus(userId: number) {
 }
 
 // ============================================================
+// DÉCONNEXION STRIPE
+// ============================================================
+
+/**
+ * Déconnecte le compte Stripe Connect d'un pro.
+ *
+ * ⚠️  On ne supprime PAS le compte Stripe côté Stripe (nécessaire pour
+ * gérer les remboursements et litiges en cours). On retire juste la
+ * référence locale et on repasse le statut à "not_connected".
+ * Le pro pourra relancer l'onboarding et créer un nouveau compte.
+ */
+export async function disconnectStripeAccount(userId: number) {
+  const [user] = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  if (!user) throw new AppError("Utilisateur introuvable", 404);
+
+  if (user.role !== "professionnel") {
+    throw new AppError(
+      "Seuls les professionnels peuvent déconnecter Stripe",
+      403
+    );
+  }
+
+  if (!user.stripe_account_id) {
+    throw new AppError("Aucun compte Stripe à déconnecter", 400);
+  }
+
+  await db
+    .update(users)
+    .set({
+      stripe_account_id: null,
+      stripe_account_status: "not_connected",
+    })
+    .where(eq(users.id, userId));
+
+  return { success: true };
+}
+// ============================================================
 // CHECKOUT avec Stripe Connect
 // ============================================================
 
