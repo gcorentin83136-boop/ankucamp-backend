@@ -58,10 +58,19 @@ export async function registerUser(input: RegisterInput) {
 
   const username = await generateUsername(input.first_name, input.last_name);
 
+  // 📍 Conversion lat/lng : number → string (Drizzle numeric = string)
+  const cleanedInput: any = { ...dataWithoutPassword };
+  if (cleanedInput.latitude !== undefined && cleanedInput.latitude !== null) {
+    cleanedInput.latitude = String(cleanedInput.latitude);
+  }
+  if (cleanedInput.longitude !== undefined && cleanedInput.longitude !== null) {
+    cleanedInput.longitude = String(cleanedInput.longitude);
+  }
+
   const [created] = await db
     .insert(users)
     .values({
-      ...dataWithoutPassword,
+      ...cleanedInput,
       username,
       password_hash,
       provider: "local",
