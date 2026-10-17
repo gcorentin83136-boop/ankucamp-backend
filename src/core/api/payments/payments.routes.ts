@@ -12,6 +12,9 @@ import {
   onboardConnect,
   connectStatus,
   disconnectConnect,
+  setupIntent,
+  myPaymentMethods,
+  deletePaymentMethod,
 } from "./payments.controller";
 
 const router = Router();
@@ -36,5 +39,22 @@ router.get("/order/:orderId", authMiddleware, asyncHandler(getOneByOrder));
 router.post("/connect/onboard", authMiddleware, asyncHandler(onboardConnect));
 router.post("/connect/disconnect", authMiddleware, asyncHandler(disconnectConnect));
 router.get("/connect/status", authMiddleware, asyncHandler(connectStatus));
+
+// Stripe Customer (buyer) — cartes enregistrées
+router.post(
+  "/customer/setup-intent",
+  authMiddleware,
+  asyncHandler(setupIntent)
+);
+router.get(
+  "/customer/payment-methods",
+  authMiddleware,
+  asyncHandler(myPaymentMethods)
+);
+router.delete(
+  "/customer/payment-methods/:id",
+  authMiddleware,
+  asyncHandler(deletePaymentMethod)
+);
 
 export default router;

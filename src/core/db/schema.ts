@@ -37,6 +37,7 @@ export const users = pgTable("users", {
   provider: varchar("provider", { length: 50 }).default("local").notNull(),
   provider_id: varchar("provider_id", { length: 255 }),
   stripe_account_id: varchar("stripe_account_id", { length: 255 }),
+    stripe_customer_id: varchar("stripe_customer_id", { length: 255 }),
   stripe_account_status: varchar("stripe_account_status", { length: 50 })
     .default("not_connected")
     .notNull(),

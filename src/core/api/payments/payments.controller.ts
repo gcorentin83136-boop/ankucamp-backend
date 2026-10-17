@@ -12,6 +12,9 @@ import {
   createConnectOnboardingLink,
   getConnectStatus,
   disconnectStripeAccount,
+  createSetupIntent,
+  listPaymentMethods,
+  detachPaymentMethod,
 } from "./payments.service";
 import { stripe } from "../../../config/stripe";
 import { env } from "../../../config/env";
@@ -128,6 +131,34 @@ export async function disconnectConnect(req: AuthRequest, res: Response) {
     success: true,
     message: "Compte Stripe déconnecté",
   });
+}
+// ============================================================
+// POST /payments/customer/setup-intent
+// ============================================================
+export async function setupIntent(req: AuthRequest, res: Response) {
+  if (!req.user) throw new AppError("Non authentifié", 401);
+  const result = await createSetupIntent(req.user.id);
+  return res.json({ success: true, ...result });
+}
+
+// ============================================================
+// GET /payments/customer/payment-methods
+// ============================================================
+export async function myPaymentMethods(req: AuthRequest, res: Response) {
+  if (!req.user) throw new AppError("Non authentifié", 401);
+  const methods = await listPaymentMethods(req.user.id);
+  return res.json({ success: true, payment_methods: methods });
+}
+
+// ============================================================
+// DELETE /payments/customer/payment-methods/:id
+// ============================================================
+export async function deletePaymentMethod(req: AuthRequest, res: Response) {
+  if (!req.user) throw new AppError("Non authentifié", 401);
+  const pmId = req.params.id;
+  if (!pmId) throw new AppError("ID manquant", 400);
+  await detachPaymentMethod(req.user.id, pmId);
+  return res.json({ success: true, message: "Carte supprimée" });
 }
 // ============================================================
 // GET /payments/seller/me — Commissions ANKU sur mes ventes

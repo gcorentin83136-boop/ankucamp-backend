@@ -122,6 +122,97 @@ export async function getConnectStatus(userId: number) {
 }
 
 // ============================================================
+// STRIPE CUSTOMER (buyer) — cartes enregistrées
+// ============================================================
+
+export async function getOrCreateStripeCustomer(userId: number): Promise<string> {
+  const [user] = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  if (!user) throw new AppError("Utilisateur introuvable", 404);
+  if (user.stripe_customer_id) return user.stripe_customer_id;
+
+  const customer = await stripe.customers.create({
+    email: user.email,
+    name: `${user.first_name} ${user.last_name}`.trim(),
+    metadata: { user_id: String(user.id) },
+  });
+
+  await db
+    .update(users)
+    .set({ stripe_customer_id: customer.id })
+    .where(eq(users.id, userId));
+
+  return customer.id;
+}
+
+export async function createSetupIntent(userId: number) {
+  const customerId = await getOrCreateStripeCustomer(userId);
+
+  const setupIntent = await stripe.setupIntents.create({
+    customer: customerId,
+    payment_method_types: ["card"],
+    usage: "off_session",
+    metadata: { user_id: String(userId) },
+  });
+
+  if (!setupIntent.client_secret) {
+    throw new AppError("Erreur SetupIntent Stripe", 500);
+  }
+
+  return {
+    client_secret: setupIntent.client_secret,
+    customer_id: customerId,
+  };
+}
+
+export async function listPaymentMethods(userId: number) {
+  const [user] = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  if (!user?.stripe_customer_id) return [];
+
+  const pms = await stripe.paymentMethods.list({
+    customer: user.stripe_customer_id,
+    type: "card",
+  });
+
+  return pms.data.map((pm) => ({
+    id: pm.id,
+    brand: pm.card?.brand ?? "unknown",
+    last4: pm.card?.last4 ?? "????",
+    exp_month: pm.card?.exp_month ?? 0,
+    exp_year: pm.card?.exp_year ?? 0,
+  }));
+}
+
+export async function detachPaymentMethod(userId: number, pmId: string) {
+  const [user] = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  if (!user?.stripe_customer_id) {
+    throw new AppError("Aucun compte Stripe associé", 404);
+  }
+
+  const pm = await stripe.paymentMethods.retrieve(pmId);
+  if (pm.customer !== user.stripe_customer_id) {
+    throw new AppError("Cette carte ne t'appartient pas", 403);
+  }
+
+  await stripe.paymentMethods.detach(pmId);
+
+  return { success: true };
+}
+// ============================================================
 // DÉCONNEXION STRIPE
 // ============================================================
 
