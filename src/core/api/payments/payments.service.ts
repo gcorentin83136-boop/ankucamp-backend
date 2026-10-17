@@ -133,7 +133,24 @@ export async function getOrCreateStripeCustomer(userId: number): Promise<string>
     .limit(1);
 
   if (!user) throw new AppError("Utilisateur introuvable", 404);
-  if (user.stripe_customer_id) return user.stripe_customer_id;
+  if (user.stripe_customer_id) {
+    try {
+      // On vérifie que le customer existe toujours chez Stripe
+      const customer = await stripe.customers.retrieve(user.stripe_customer_id);
+      if (!("deleted" in customer)) {
+        return user.stripe_customer_id;
+      }
+    } catch (err: any) {
+      if (err?.code === "resource_missing" || err?.statusCode === 404) {
+        console.warn(
+          `⚠️  Customer ${user.stripe_customer_id} introuvable chez Stripe (supprimé ?). On en recrée un.`
+        );
+        // on continue pour en recréer un
+      } else {
+        throw err;
+      }
+    }
+  }
 
   const customer = await stripe.customers.create({
     email: user.email,
@@ -157,6 +174,7 @@ export async function createSetupIntent(userId: number) {
     payment_method_types: ["card"],
     usage: "off_session",
     metadata: { user_id: String(userId) },
+
   });
 
   if (!setupIntent.client_secret) {
@@ -178,18 +196,73 @@ export async function listPaymentMethods(userId: number) {
 
   if (!user?.stripe_customer_id) return [];
 
-  const pms = await stripe.paymentMethods.list({
-    customer: user.stripe_customer_id,
-    type: "card",
+  try {
+    const pms = await stripe.paymentMethods.list({
+      customer: user.stripe_customer_id,
+      type: "card",
+    });
+
+    return pms.data.map((pm) => ({
+      id: pm.id,
+      brand: pm.card?.brand ?? "unknown",
+      last4: pm.card?.last4 ?? "????",
+      exp_month: pm.card?.exp_month ?? 0,
+      exp_year: pm.card?.exp_year ?? 0,
+    }));
+  } catch (err: any) {
+    // Si le customer a été supprimé côté Stripe, on reset la DB et on renvoie []
+    if (err?.code === "resource_missing" || err?.statusCode === 404) {
+      console.warn(
+        `⚠️  Customer ${user.stripe_customer_id} introuvable chez Stripe. Reset en DB.`
+      );
+      await db
+        .update(users)
+        .set({ stripe_customer_id: null })
+        .where(eq(users.id, userId));
+      return [];
+    }
+    throw err;
+  }
+}
+
+/**
+ * Marque une carte comme "allow_redisplay: always" pour qu'elle soit
+ * visible sur Stripe Checkout lors des prochains paiements.
+ */
+export async function setPaymentMethodRedisplay(userId: number, pmId: string) {
+  const [user] = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  if (!user?.stripe_customer_id) {
+    throw new AppError("Aucun compte Stripe associé", 404);
+  }
+
+  const pm = await stripe.paymentMethods.retrieve(pmId);
+  if (pm.customer !== user.stripe_customer_id) {
+    throw new AppError("Cette carte ne t'appartient pas", 403);
+  }
+
+  await stripe.paymentMethods.update(pmId, {
+    allow_redisplay: "always",
   });
 
-  return pms.data.map((pm) => ({
-    id: pm.id,
-    brand: pm.card?.brand ?? "unknown",
-    last4: pm.card?.last4 ?? "????",
-    exp_month: pm.card?.exp_month ?? 0,
-    exp_year: pm.card?.exp_year ?? 0,
-  }));
+  return { success: true };
+}
+
+export async function updatePaymentMethod(userId: number, pmId: string, data: any) {
+  const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  if (!user?.stripe_customer_id) throw new AppError("Aucun compte Stripe associé", 404);
+  const pm = await stripe.paymentMethods.retrieve(pmId);
+  if (pm.customer !== user.stripe_customer_id) throw new AppError("Cette carte ne t'appartient pas", 403);
+
+  await stripe.paymentMethods.update(pmId, {
+    billing_details: data,
+    allow_redisplay: "always",
+  });
+  return { success: true };
 }
 
 export async function detachPaymentMethod(userId: number, pmId: string) {
@@ -305,6 +378,15 @@ export async function createCheckoutSession(
     );
   }
 
+  // 🆕 Récupère le customer Stripe du buyer (si existant) pour pré-remplir Checkout
+  const [buyer] = await db
+    .select({ stripe_customer_id: users.stripe_customer_id })
+    .from(users)
+    .where(eq(users.id, buyerId))
+    .limit(1);
+
+  const buyerStripeCustomerId = buyer?.stripe_customer_id ?? undefined;
+
   const items = await db
     .select({
       quantity: orderItems.quantity,
@@ -341,7 +423,15 @@ export async function createCheckoutSession(
       buyer_id: String(buyerId),
       seller_id: String(seller.id),
     },
-    customer_creation: "always",
+    ...(buyerStripeCustomerId
+      ? {
+          customer: buyerStripeCustomerId,
+          saved_payment_method_options: {
+            payment_method_save: "enabled",
+            allow_redisplay_filters: ["always"],
+          },
+        }
+      : { customer_creation: "always" as const }),
     payment_intent_data: {
       application_fee_amount: applicationFee,
       transfer_data: {

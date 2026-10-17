@@ -15,6 +15,8 @@ import {
   createSetupIntent,
   listPaymentMethods,
   detachPaymentMethod,
+  setPaymentMethodRedisplay,
+  updatePaymentMethod,
 } from "./payments.service";
 import { stripe } from "../../../config/stripe";
 import { env } from "../../../config/env";
@@ -160,6 +162,10 @@ export async function deletePaymentMethod(req: AuthRequest, res: Response) {
   await detachPaymentMethod(req.user.id, pmId);
   return res.json({ success: true, message: "Carte supprimée" });
 }
+
+// ============================================================
+// POST /payments/customer/payment-methods/:id/allow-redisplay
+// ============================================================
 // ============================================================
 // GET /payments/seller/me — Commissions ANKU sur mes ventes
 // ============================================================
@@ -170,6 +176,27 @@ export async function listSellerMine(req: AuthRequest, res: Response) {
   return res.json({ success: true, payments: list });
 }
 
+// ============================================================
+// PATCH /payments/customer/payment-methods/:id
+// ============================================================
+export async function updatePaymentMethodHandler(req: AuthRequest, res: Response) {
+  if (!req.user) throw new AppError("Non authentifié", 401);
+  const pmId = req.params.id;
+  if (!pmId) throw new AppError("ID manquant", 400);
+  await updatePaymentMethod(req.user.id, pmId, req.body);
+  return res.json({ success: true, message: "Carte mise à jour" });
+}
+
+// ============================================================
+// POST /payments/customer/payment-methods/:id/allow-redisplay
+// ============================================================
+export async function setRedisplay(req: AuthRequest, res: Response) {
+  if (!req.user) throw new AppError("Non authentifié", 401);
+  const pmId = req.params.id;
+  if (!pmId) throw new AppError("ID manquant", 400);
+  await setPaymentMethodRedisplay(req.user.id, pmId);
+  return res.json({ success: true, message: "Carte marquée pour réaffichage" });
+}
 // ============================================================
 // GET /payments/seller/me/export — PDF récap factures
 // ============================================================

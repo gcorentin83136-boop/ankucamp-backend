@@ -15,6 +15,8 @@ import {
   setupIntent,
   myPaymentMethods,
   deletePaymentMethod,
+  setRedisplay,
+  updatePaymentMethodHandler,
 } from "./payments.controller";
 
 const router = Router();
@@ -55,6 +57,18 @@ router.delete(
   "/customer/payment-methods/:id",
   authMiddleware,
   asyncHandler(deletePaymentMethod)
+);
+
+router.post(
+  "/customer/payment-methods/:id/allow-redisplay",
+  authMiddleware,
+  asyncHandler(setRedisplay)
+);
+
+router.patch(
+  "/customer/payment-methods/:id",
+  authMiddleware,
+  asyncHandler(updatePaymentMethodHandler)
 );
 
 export default router;
