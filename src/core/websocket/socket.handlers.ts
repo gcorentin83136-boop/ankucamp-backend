@@ -306,6 +306,167 @@ export function registerSocketHandlers(
   });
 
   // ============================================================
+  // 🎙️ APPELS VOCAUX / VIDÉO - SIGNALING WEBRTC
+  // ============================================================
+  // Le serveur ne fait que RELAYER les events entre 2 users.
+  // Les flux audio/vidéo passent directement en P2P entre navigateurs.
+
+  // L'appelant initie l'appel
+  socket.on(
+    "call:initiate",
+    async (data: {
+      conversationId: number;
+      toUserId: number;
+      callType: "audio" | "video";
+    }) => {
+      try {
+        const { conversationId, toUserId, callType } = data;
+        if (!conversationId || !toUserId) {
+          throw new Error("conversationId et toUserId requis");
+        }
+
+        // Vérifie que l'appelant est bien dans la conv
+        await getConversationById(conversationId, user.id);
+
+        const callId = `call_${Date.now()}_${user.id}_${toUserId}`;
+
+        // Envoie la notification d'appel entrant au destinataire (room user:X)
+        io.to(`user:${toUserId}`).emit("call:incoming", {
+          callId,
+          conversationId,
+          callType,
+          fromUser: {
+            id: user.id,
+            username: user.username,
+            firstName: user.firstName,
+          },
+        });
+
+        console.log(
+          `📞 Appel ${callType} initié par #${user.id} → #${toUserId} (${callId})`
+        );
+
+        socket.emit("call:initiated", { callId });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Erreur";
+        socket.emit("call:error", { event: "call:initiate", message });
+      }
+    }
+  );
+
+  // Le destinataire accepte
+  socket.on(
+    "call:accept",
+    async (data: { callId: string; toUserId: number }) => {
+      try {
+        const { callId, toUserId } = data;
+        io.to(`user:${toUserId}`).emit("call:accepted", {
+          callId,
+          fromUserId: user.id,
+        });
+        console.log(`✅ Appel ${callId} accepté par #${user.id}`);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Erreur";
+        socket.emit("call:error", { event: "call:accept", message });
+      }
+    }
+  );
+
+  // Le destinataire refuse
+  socket.on(
+    "call:reject",
+    async (data: { callId: string; toUserId: number; reason?: string }) => {
+      try {
+        const { callId, toUserId, reason } = data;
+        io.to(`user:${toUserId}`).emit("call:rejected", {
+          callId,
+          fromUserId: user.id,
+          reason: reason ?? "declined",
+        });
+        console.log(`❌ Appel ${callId} refusé par #${user.id}`);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Erreur";
+        socket.emit("call:error", { event: "call:reject", message });
+      }
+    }
+  );
+
+  // L'un des deux raccroche
+  socket.on(
+    "call:hangup",
+    async (data: { callId: string; toUserId: number }) => {
+      try {
+        const { callId, toUserId } = data;
+        io.to(`user:${toUserId}`).emit("call:hangup", {
+          callId,
+          fromUserId: user.id,
+        });
+        console.log(`📴 Appel ${callId} raccroché par #${user.id}`);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Erreur";
+        socket.emit("call:error", { event: "call:hangup", message });
+      }
+    }
+  );
+
+  // WebRTC : Offre (SDP)
+  socket.on(
+    "call:offer",
+    (data: { callId: string; toUserId: number; sdp: any }) => {
+      io.to(`user:${data.toUserId}`).emit("call:offer", {
+        callId: data.callId,
+        sdp: data.sdp,
+        fromUserId: user.id,
+      });
+    }
+  );
+
+  // WebRTC : Réponse (SDP)
+  socket.on(
+    "call:answer",
+    (data: { callId: string; toUserId: number; sdp: any }) => {
+      io.to(`user:${data.toUserId}`).emit("call:answer", {
+        callId: data.callId,
+        sdp: data.sdp,
+        fromUserId: user.id,
+      });
+    }
+  );
+
+  // WebRTC : ICE Candidate (traversée NAT)
+  socket.on(
+    "call:ice-candidate",
+    (data: { callId: string; toUserId: number; candidate: any }) => {
+      io.to(`user:${data.toUserId}`).emit("call:ice-candidate", {
+        callId: data.callId,
+        candidate: data.candidate,
+        fromUserId: user.id,
+      });
+    }
+  );
+
+  // Demande de passage en vidéo (vocal -> vidéo)
+  socket.on(
+    "call:request-video",
+    (data: { callId: string; toUserId: number }) => {
+      io.to(`user:${data.toUserId}`).emit("call:video-requested", {
+        callId: data.callId,
+        fromUserId: user.id,
+      });
+    }
+  );
+
+  // Acceptation du passage en vidéo
+  socket.on(
+    "call:accept-video",
+    (data: { callId: string; toUserId: number }) => {
+      io.to(`user:${data.toUserId}`).emit("call:video-accepted", {
+        callId: data.callId,
+        fromUserId: user.id,
+      });
+    }
+  );
+  // ============================================================
   // DISCONNECT
   // ============================================================
   socket.on("disconnect", (reason) => {
