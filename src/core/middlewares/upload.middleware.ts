@@ -62,7 +62,25 @@ const ALLOWED_DOCUMENT_TYPES = [
 // ------------------------------------------------------------
 // Upload CHAT (images, audios, videos pour la messagerie)
 // ------------------------------------------------------------
-const MAX_CHAT_SIZE = 100 * 1024 * 1024; // 100 MB
+const MAX_CHAT_SIZE = 200 * 1024 * 1024; // 200 MB
+
+const ALLOWED_CHAT_DOC_TYPES = [
+  "application/pdf",
+  "application/zip",
+  "application/x-zip-compressed",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "text/plain",
+  "text/csv",
+  "application/x-rar-compressed",
+  "application/x-7z-compressed",
+  "application/gzip",
+  "application/x-tar"
+];
 
 export const uploadChat = multer({
   storage: multer.memoryStorage(),
@@ -71,7 +89,7 @@ export const uploadChat = multer({
     if (
       file.mimetype.startsWith("image/") ||
       file.mimetype.startsWith("audio/") ||
-      file.mimetype.startsWith("video/")
+      file.mimetype.startsWith("video/") || ALLOWED_CHAT_DOC_TYPES.includes(file.mimetype)
     ) {
       cb(null, true);
     } else {
