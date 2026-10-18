@@ -2,7 +2,7 @@ import { Response } from "express";
 import { AuthRequest } from "../../middlewares/auth.middleware";
 import { AppError } from "../../errors/AppError";
 import { db } from "../../db";
-import { users } from "../../db/schema";
+import { users, messages } from "../../db/schema";
 import { eq } from "drizzle-orm";
 import {
   createConversationSchema,
@@ -358,6 +358,26 @@ export async function react(req: AuthRequest, res: Response) {
   }
 
   const result = await toggleReaction(messageId, req.user.id, parsed.data.emoji);
+  // Emet l'evenement WebSocket aux autres participants (une seule fois !)
+  try {
+    const [msg] = await db
+      .select({ conversation_id: messages.conversation_id })
+      .from(messages)
+      .where(eq(messages.id, messageId))
+      .limit(1);
+
+    if (msg?.conversation_id) {
+      const io = getIO();
+      io.to(`conversation:${msg.conversation_id}`).emit("message:reacted", {
+        messageId,
+        userId: req.user.id,
+        emoji: parsed.data.emoji,
+        action: result.action,
+      });
+    }
+  } catch (wsErr) {
+    console.error("Erreur envoi WebSocket reaction:", wsErr);
+  }
 
   return res.json({ success: true, ...result });
 }
