@@ -35,6 +35,7 @@ async function uploadToCloudinary(
       {
         folder,
         resource_type: resourceType,
+        timeout: 120000, // 🆕 2 minutes de timeout pour les grosses vidéos
         transformation:
           resourceType === "image"
             ? [

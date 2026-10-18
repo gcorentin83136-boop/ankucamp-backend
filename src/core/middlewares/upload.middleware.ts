@@ -62,7 +62,7 @@ const ALLOWED_DOCUMENT_TYPES = [
 // ------------------------------------------------------------
 // Upload CHAT (images, audios, videos pour la messagerie)
 // ------------------------------------------------------------
-const MAX_CHAT_SIZE = 50 * 1024 * 1024; // 50 MB
+const MAX_CHAT_SIZE = 100 * 1024 * 1024; // 100 MB
 
 export const uploadChat = multer({
   storage: multer.memoryStorage(),
