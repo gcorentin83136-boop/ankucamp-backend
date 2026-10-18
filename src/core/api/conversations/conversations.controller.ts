@@ -1,6 +1,9 @@
 import { Response } from "express";
 import { AuthRequest } from "../../middlewares/auth.middleware";
 import { AppError } from "../../errors/AppError";
+import { db } from "../../db";
+import { users } from "../../db/schema";
+import { eq } from "drizzle-orm";
 import {
   createConversationSchema,
   updateConversationSchema,
@@ -27,6 +30,8 @@ import {
   markAsRead,
   toggleReaction,
 } from "./conversations.service";
+import { getIO } from "../../websocket/websocket.server";
+import { notifyNewMessage } from "../../notifications/social-notifications.helper";
 
 function parseId(raw: string | undefined): number {
   const id = Number(raw);
@@ -216,6 +221,61 @@ export async function postMessage(req: AuthRequest, res: Response) {
   }
 
   const message = await sendMessage(id, req.user.id, parsed.data);
+
+  // 🆕 ENVOI WEBSOCKET POUR LA BULLE DE NOTIFICATION
+  try {
+    const io = getIO();
+    const conversation = await getConversationById(id, req.user.id);
+    
+    // Récupère le profil complet de l'expéditeur pour le frontend
+    const [sender] = await db
+      .select({
+        id: users.id,
+        username: users.username,
+        first_name: users.first_name,
+        last_name: users.last_name,
+        avatar_url: users.avatar_url,
+      })
+      .from(users)
+      .where(eq(users.id, req.user.id))
+      .limit(1);
+
+    if (conversation && conversation.participants && sender) {
+      const participantIds = conversation.participants.map((p: any) => p.user_id);
+      
+      // On construit l'objet enrichi avec l'auteur pour le frontend
+      const enriched = {
+        ...message,
+        author: sender,
+        reactions: {},
+      };
+
+      for (const pId of participantIds) {
+        if (pId === req.user.id) continue; // On ne notifie pas l'expéditeur
+
+        // 1. Envoie l'event pour la bulle frontend
+        io.to(`user:${pId}`).emit("message:notification", enriched);
+        
+        // 2. Envoie l'event pour mettre à jour la liste des conversations
+        io.to(`user:${pId}`).emit("conversation:updated", {
+          conversationId: id,
+          lastMessage: enriched,
+        });
+
+        // 3. Crée la notification (DB + Push FCM)
+        notifyNewMessage(
+          pId,
+          id,
+          message.id,
+          sender.first_name,
+          parsed.data.content?.slice(0, 80) ?? "📎 Média"
+        ).catch((err) => console.error("❌ Erreur notif message:", err));
+      }
+    }
+  } catch (wsErr) {
+    console.error("❌ Erreur envoi WebSocket:", wsErr);
+    // On ne bloque pas la réponse HTTP si le WebSocket échoue
+  }
 
   return res.status(201).json({ success: true, message });
 }

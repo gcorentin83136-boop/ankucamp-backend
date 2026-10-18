@@ -74,8 +74,8 @@ export const sendMessageSchema = z.object({
     .max(5000, "Le message est trop long")
     .optional()
     .nullable(),
-  type: z.enum(["text", "image", "file"]).default("text"),
-  media_url: z.string().url().optional().nullable(),
+  type: z.enum(["text", "image", "audio", "video", "file"]).default("text"),
+  media_url: z.string().max(5000).optional().nullable(),
   reply_to_message_id: z.number().int().positive().optional().nullable(),
 });
 

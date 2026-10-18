@@ -5,6 +5,7 @@ import {
   uploadCover as uploadCoverMw,
   uploadDocument,
   uploadVideo,
+  uploadChat,
 } from "../../middlewares/upload.middleware";
 import { asyncHandler } from "../../errors/asyncHandler";
 import { uploadsLimiter } from "../../../config/security";
@@ -17,6 +18,7 @@ import {
   uploadProductVideo,
   uploadEventCover,
   uploadCommentMedia,
+  uploadChatMedia,
   uploadProductVideoDraft,
   deleteProductVideo,
   uploadPostMedia,
@@ -35,6 +37,13 @@ router.post(
   authMiddleware,
   upload.single("file"),
   asyncHandler(uploadEventCover)
+);
+
+router.post(
+  "/chat-media",
+  authMiddleware,
+  uploadChat.single("file"),
+  asyncHandler(uploadChatMedia)
 );
 
 router.post(

@@ -59,6 +59,32 @@ const ALLOWED_DOCUMENT_TYPES = [
   "application/pdf",
 ];
 
+// ------------------------------------------------------------
+// Upload CHAT (images, audios, videos pour la messagerie)
+// ------------------------------------------------------------
+const MAX_CHAT_SIZE = 50 * 1024 * 1024; // 50 MB
+
+export const uploadChat = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_CHAT_SIZE },
+  fileFilter: (_req, file, cb) => {
+    if (
+      file.mimetype.startsWith("image/") ||
+      file.mimetype.startsWith("audio/") ||
+      file.mimetype.startsWith("video/")
+    ) {
+      cb(null, true);
+    } else {
+      cb(
+        new AppError(
+          "Format non supporté (images, audios et vidéos uniquement)",
+          400
+        )
+      );
+    }
+  },
+});
+
 export const uploadDocument = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_DOCUMENT_SIZE },

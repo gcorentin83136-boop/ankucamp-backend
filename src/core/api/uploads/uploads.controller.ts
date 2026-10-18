@@ -422,6 +422,34 @@ export async function uploadEventCover(
 }
 
 // ============================================================
+// POST /uploads/chat-media
+// Upload un média (image, audio, vidéo) pour la messagerie
+// ============================================================
+export async function uploadChatMedia(req: AuthRequest, res: Response) {
+  if (!req.user) throw new AppError("Non authentifié", 401);
+  if (!req.file) throw new AppError("Aucun fichier fourni", 400);
+
+  let resourceType: "image" | "video" | "auto" = "auto";
+  
+  if (req.file.mimetype.startsWith("image/")) {
+    resourceType = "image";
+  } else if (req.file.mimetype.startsWith("video/")) {
+    resourceType = "video";
+  }
+
+  const url = await uploadToCloudinary(
+    req.file.buffer,
+    "ankucamp/chat",
+    { resourceType }
+  );
+
+  return res.status(200).json({
+    success: true,
+    message: "Média de chat uploadé",
+    url,
+  });
+}
+// ============================================================
 // POST /uploads/comment-media
 // ============================================================
 export async function uploadCommentMedia(

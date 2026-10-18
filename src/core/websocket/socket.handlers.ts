@@ -127,7 +127,6 @@ export function registerSocketHandlers(
         };
 
         // ✅ FIX : Broadcast aux AUTRES participants (pas d'écho pour l'expéditeur)
-        // socket.to(room) exclut automatiquement le socket courant
         socket
           .to(`conversation:${conversationId}`)
           .emit("message:new", enriched);
@@ -149,6 +148,9 @@ export function registerSocketHandlers(
           ).catch((err) =>
             console.error("❌ Erreur notif message:", err)
           );
+
+          // 🆕 Émet un event spécifique pour la bulle de notification (peu importe la page)
+          io.to(`user:${pId}`).emit("message:notification", enriched);
 
           // Émet sur la room user:X pour mettre à jour la liste des convs
           io.to(`user:${pId}`).emit("conversation:updated", {
@@ -186,7 +188,6 @@ export function registerSocketHandlers(
           .limit(1);
 
         if (msg?.conversation_id) {
-          // Broadcast à tous (y compris l'expéditeur pour sync)
           io.to(`conversation:${msg.conversation_id}`).emit(
             "message:edited",
             updated
@@ -218,7 +219,6 @@ export function registerSocketHandlers(
 
       await deleteMessage(messageId, user.id);
 
-      // Broadcast à tous (y compris l'expéditeur pour sync)
       io.to(`conversation:${msg.conversation_id}`).emit("message:deleted", {
         messageId,
       });
@@ -239,7 +239,6 @@ export function registerSocketHandlers(
 
         await markAsRead(conversationId, user.id, untilMessageId ?? null);
 
-        // Broadcast aux AUTRES (pas besoin de se notifier soi-même)
         socket.to(`conversation:${conversationId}`).emit("message:read", {
           conversationId,
           userId: user.id,
@@ -271,7 +270,6 @@ export function registerSocketHandlers(
           .limit(1);
 
         if (msg?.conversation_id) {
-          // Broadcast à tous (y compris l'expéditeur pour sync)
           io.to(`conversation:${msg.conversation_id}`).emit("message:reacted", {
             messageId,
             userId: user.id,
