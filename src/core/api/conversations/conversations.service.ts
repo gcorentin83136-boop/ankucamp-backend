@@ -609,10 +609,31 @@ export async function getMessages(
       {} as Record<string, number[]>
     );
 
+    let replyTo: any = null;
+    if (msg.reply_to_message_id) {
+      const [original] = await db
+        .select()
+        .from(messages)
+        .where(eq(messages.id, msg.reply_to_message_id))
+        .limit(1);
+      if (original) {
+        const originalAuthor = await enrichUser(original.sender_id);
+        replyTo = {
+          id: original.id,
+          content: original.content,
+          type: original.type,
+          media_url: original.media_url,
+          deleted_at: original.deleted_at,
+          author: originalAuthor,
+        };
+      }
+    }
+
     enriched.push({
       ...msg,
       author,
       reactions: reactionsGrouped,
+      reply_to_message: replyTo,
     });
   }
 
