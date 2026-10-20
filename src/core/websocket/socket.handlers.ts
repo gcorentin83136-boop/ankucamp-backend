@@ -5,6 +5,7 @@ import {
   conversationParticipants,
   messages,
   conversations,
+  users,
 } from "../db/schema";
 import {
   sendMessage,
@@ -84,21 +85,22 @@ async function createCallMessage(
 }
 
 // ============================================================
+// TIMEOUT APPELS
+// ============================================================
+const callTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
+
+function clearCallTimeout(callId: string) {
+  const t = callTimeouts.get(callId);
+  if (t) {
+    clearTimeout(t);
+    callTimeouts.delete(callId);
+  }
+}
+
+// ============================================================
 // HANDLERS
 // ============================================================
 
-// ============================================================
-// TIMEOUT APPELS - Map callId → NodeJS.Timeout
-// ============================================================
-const callTimeouts = new Map<string, ReturnType<typeof setTimeout>>()
-
-function clearCallTimeout(callId: string) {
-  const t = callTimeouts.get(callId)
-  if (t) {
-    clearTimeout(t)
-    callTimeouts.delete(callId)
-  }
-}
 export function registerSocketHandlers(
   io: Server,
   socket: AuthenticatedSocket
@@ -252,40 +254,39 @@ export function registerSocketHandlers(
       const { conversationId, toUserId, callType } = data;
       if (!conversationId || !toUserId) throw new Error("IDs requis");
       await getConversationById(conversationId, user.id);
+
+      // Récupère l'avatar de l'appelant
+      const [caller] = await db
+        .select({ avatar_url: users.avatar_url })
+        .from(users)
+        .where(eq(users.id, user.id))
+        .limit(1);
+
       const callId = `call_${Date.now()}_${user.id}_${toUserId}`;
       io.to(`user:${toUserId}`).emit("call:incoming", {
-        callId, conversationId, callType,
-        fromUser: { id: user.id, username: user.username, firstName: user.firstName },
+        callId,
+        conversationId,
+        callType,
+        fromUser: {
+          id: user.id,
+          username: user.username,
+          firstName: user.firstName,
+          avatarUrl: caller?.avatar_url ?? null,
+        },
       });
       socket.emit("call:initiated", { callId });
 
-      // ⏱️ TIMEOUT : si personne ne répond dans 30s, on raccroche en "missed"
+      // ⏱️ TIMEOUT 30s → missed
       const timeout = setTimeout(async () => {
         callTimeouts.delete(callId);
-
-        // Prévient les 2 clients
         io.to(`user:${toUserId}`).emit("call:hangup", {
-          callId,
-          fromUserId: user.id,
-          reason: "missed",
+          callId, fromUserId: user.id, reason: "missed",
         });
         io.to(`user:${user.id}`).emit("call:hangup", {
-          callId,
-          fromUserId: toUserId,
-          reason: "missed",
+          callId, fromUserId: toUserId, reason: "missed",
         });
-
-        // Crée le message d'historique
-        await createCallMessage(
-          io,
-          conversationId,
-          user.id,
-          callType,
-          "missed",
-          0
-        );
-
-        console.log(`⏱️ Appel ${callId} - timeout 30s (missed)`);
+        await createCallMessage(io, conversationId, user.id, callType, "missed", 0);
+        console.log(`⏱️ Appel ${callId} timeout 30s (missed)`);
       }, 30000);
 
       callTimeouts.set(callId, timeout);
