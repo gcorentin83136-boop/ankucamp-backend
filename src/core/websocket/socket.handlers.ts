@@ -4,6 +4,7 @@ import { db } from "../db";
 import {
   conversationParticipants,
   messages,
+  conversations,
 } from "../db/schema";
 import {
   sendMessage,
@@ -20,9 +21,6 @@ import { notifyNewMessage } from "../notifications/social-notifications.helper";
 // HELPERS
 // ============================================================
 
-/**
- * Renvoie les IDs des participants actifs d'une conversation.
- */
 async function getConversationParticipantIds(
   conversationId: number
 ): Promise<number[]> {
@@ -35,39 +33,86 @@ async function getConversationParticipantIds(
         isNull(conversationParticipants.left_at)
       )
     );
-
   return rows.map((r) => r.user_id);
+}
+
+async function createCallMessage(
+  io: Server,
+  conversationId: number,
+  initiatorId: number,
+  callType: "audio" | "video",
+  status: "ended" | "missed" | "rejected",
+  durationSec: number
+) {
+  try {
+    const content = JSON.stringify({ callType, status, duration: durationSec });
+    const [created] = await db
+      .insert(messages)
+      .values({
+        conversation_id: conversationId,
+        sender_id: initiatorId,
+        type: "call",
+        content,
+      })
+      .returning();
+
+    const label = callType === "video" ? "vidéo" : "vocal";
+    const previewText =
+      status === "missed"
+        ? `📞 Appel ${label} manqué`
+        : status === "rejected"
+        ? `📞 Appel ${label} refusé`
+        : `📞 Appel ${label} · ${Math.floor(durationSec / 60)}m${durationSec % 60}s`;
+
+    await db
+      .update(conversations)
+      .set({ last_message_at: new Date(), last_message_preview: previewText })
+      .where(eq(conversations.id, conversationId));
+
+    const participantIds = await getConversationParticipantIds(conversationId);
+    for (const pId of participantIds) {
+      io.to(`user:${pId}`).emit("message:new", created);
+      io.to(`user:${pId}`).emit("conversation:updated", {
+        conversationId,
+        lastMessage: created,
+      });
+    }
+    console.log(`📞 Message call inséré dans conv #${conversationId} (${status})`);
+  } catch (err) {
+    console.error("❌ Erreur createCallMessage:", err);
+  }
 }
 
 // ============================================================
 // HANDLERS
 // ============================================================
 
+// ============================================================
+// TIMEOUT APPELS - Map callId → NodeJS.Timeout
+// ============================================================
+const callTimeouts = new Map<string, ReturnType<typeof setTimeout>>()
+
+function clearCallTimeout(callId: string) {
+  const t = callTimeouts.get(callId)
+  if (t) {
+    clearTimeout(t)
+    callTimeouts.delete(callId)
+  }
+}
 export function registerSocketHandlers(
   io: Server,
   socket: AuthenticatedSocket
 ) {
   const user = socket.user!;
   console.log(`🔌 User #${user.id} (@${user.username}) connecté`);
-
-  // Room par user (pour recevoir les events ciblés)
   socket.join(`user:${user.id}`);
 
-  // ============================================================
-  // CONVERSATION: JOIN
-  // ============================================================
   socket.on("conversation:join", async (data: { conversationId: number }) => {
     try {
       const { conversationId } = data;
       if (!conversationId) throw new Error("conversationId requis");
-
       await getConversationById(conversationId, user.id);
-
       socket.join(`conversation:${conversationId}`);
-      console.log(
-        `👥 User #${user.id} rejoint la room conversation:${conversationId}`
-      );
-
       socket.emit("conversation:joined", { conversationId });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Erreur";
@@ -75,20 +120,11 @@ export function registerSocketHandlers(
     }
   });
 
-  // ============================================================
-  // CONVERSATION: LEAVE
-  // ============================================================
   socket.on("conversation:leave", (data: { conversationId: number }) => {
-    const { conversationId } = data;
-    socket.leave(`conversation:${conversationId}`);
-    console.log(
-      `👋 User #${user.id} quitte la room conversation:${conversationId}`
-    );
+    socket.leave(`conversation:${data.conversationId}`);
   });
 
-  // ============================================================
   // MESSAGE: SEND
-  // ============================================================
   socket.on(
     "message:send",
     async (data: {
@@ -99,128 +135,69 @@ export function registerSocketHandlers(
       reply_to_message_id?: number;
     }) => {
       try {
-        const {
-          conversationId,
-          content,
-          type,
-          media_url,
-          reply_to_message_id,
-        } = data;
-
+        const { conversationId, content, type, media_url, reply_to_message_id } = data;
         if (!conversationId) throw new Error("conversationId requis");
-
         const message = await sendMessage(conversationId, user.id, {
           content: content ?? null,
           type: type ?? "text",
           media_url: media_url ?? null,
           reply_to_message_id: reply_to_message_id ?? null,
         });
-
         const enriched = {
           ...message,
-          author: {
-            id: user.id,
-            username: user.username,
-            first_name: user.firstName,
-          },
+          author: { id: user.id, username: user.username, first_name: user.firstName },
           reactions: {},
         };
-
-        // ✅ FIX : Broadcast aux AUTRES participants (pas d'écho pour l'expéditeur)
-        socket
-          .to(`conversation:${conversationId}`)
-          .emit("message:new", enriched);
-
-        // Notif push aux autres participants
-        const participantIds = await getConversationParticipantIds(
-          conversationId
-        );
-
+        socket.to(`conversation:${conversationId}`).emit("message:new", enriched);
+        const participantIds = await getConversationParticipantIds(conversationId);
         for (const pId of participantIds) {
           if (pId === user.id) continue;
-
           notifyNewMessage(
-            pId,
-            conversationId,
-            message.id,
-            user.firstName,
+            pId, conversationId, message.id, user.firstName,
             content?.slice(0, 80) ?? "📎 Média"
-          ).catch((err) =>
-            console.error("❌ Erreur notif message:", err)
-          );
-
-          // 🆕 Émet un event spécifique pour la bulle de notification (peu importe la page)
+          ).catch((err) => console.error("❌ notif:", err));
           io.to(`user:${pId}`).emit("message:notification", enriched);
-
-          // Émet sur la room user:X pour mettre à jour la liste des convs
           io.to(`user:${pId}`).emit("conversation:updated", {
-            conversationId,
-            lastMessage: enriched,
+            conversationId, lastMessage: enriched,
           });
         }
-
-        console.log(
-          `📨 Socket message:new envoyé dans conv #${conversationId}`
-        );
       } catch (err) {
         const message = err instanceof Error ? err.message : "Erreur";
-        console.error("❌ Erreur message:send:", message);
         socket.emit("error", { event: "message:send", message });
       }
     }
   );
 
-  // ============================================================
   // MESSAGE: EDIT
-  // ============================================================
-  socket.on(
-    "message:edit",
-    async (data: { messageId: number; content: string }) => {
-      try {
-        const { messageId, content } = data;
-
-        const updated = await editMessage(messageId, user.id, content);
-
-        const [msg] = await db
-          .select({ conversation_id: messages.conversation_id })
-          .from(messages)
-          .where(eq(messages.id, messageId))
-          .limit(1);
-
-        if (msg?.conversation_id) {
-          io.to(`conversation:${msg.conversation_id}`).emit(
-            "message:edited",
-            updated
-          );
-        }
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Erreur";
-        socket.emit("error", { event: "message:edit", message });
-      }
-    }
-  );
-
-  // ============================================================
-  // MESSAGE: DELETE
-  // ============================================================
-  socket.on("message:delete", async (data: { messageId: number }) => {
+  socket.on("message:edit", async (data: { messageId: number; content: string }) => {
     try {
-      const { messageId } = data;
-
+      const updated = await editMessage(data.messageId, user.id, data.content);
       const [msg] = await db
         .select({ conversation_id: messages.conversation_id })
         .from(messages)
-        .where(eq(messages.id, messageId))
+        .where(eq(messages.id, data.messageId))
         .limit(1);
-
-      if (!msg?.conversation_id) {
-        throw new Error("Message introuvable");
+      if (msg?.conversation_id) {
+        io.to(`conversation:${msg.conversation_id}`).emit("message:edited", updated);
       }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erreur";
+      socket.emit("error", { event: "message:edit", message });
+    }
+  });
 
-      await deleteMessage(messageId, user.id);
-
+  // MESSAGE: DELETE
+  socket.on("message:delete", async (data: { messageId: number }) => {
+    try {
+      const [msg] = await db
+        .select({ conversation_id: messages.conversation_id })
+        .from(messages)
+        .where(eq(messages.id, data.messageId))
+        .limit(1);
+      if (!msg?.conversation_id) throw new Error("Message introuvable");
+      await deleteMessage(data.messageId, user.id);
       io.to(`conversation:${msg.conversation_id}`).emit("message:deleted", {
-        messageId,
+        messageId: data.messageId,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Erreur";
@@ -228,65 +205,23 @@ export function registerSocketHandlers(
     }
   });
 
-  // ============================================================
   // MESSAGE: READ
-  // ============================================================
-  socket.on(
-    "message:read",
-    async (data: { conversationId: number; untilMessageId?: number }) => {
-      try {
-        const { conversationId, untilMessageId } = data;
-
-        await markAsRead(conversationId, user.id, untilMessageId ?? null);
-
-        socket.to(`conversation:${conversationId}`).emit("message:read", {
-          conversationId,
-          userId: user.id,
-          untilMessageId: untilMessageId ?? null,
-          readAt: new Date().toISOString(),
-        });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Erreur";
-        socket.emit("error", { event: "message:read", message });
-      }
+  socket.on("message:read", async (data: { conversationId: number; untilMessageId?: number }) => {
+    try {
+      await markAsRead(data.conversationId, user.id, data.untilMessageId ?? null);
+      socket.to(`conversation:${data.conversationId}`).emit("message:read", {
+        conversationId: data.conversationId,
+        userId: user.id,
+        untilMessageId: data.untilMessageId ?? null,
+        readAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erreur";
+      socket.emit("error", { event: "message:read", message });
     }
-  );
+  });
 
-  // ============================================================
-  // MESSAGE: REACT
-  // ============================================================
-  socket.on(
-    "message:react",
-    async (data: { messageId: number; emoji: string }) => {
-      try {
-        const { messageId, emoji } = data;
-
-        const result = await toggleReaction(messageId, user.id, emoji);
-
-        const [msg] = await db
-          .select({ conversation_id: messages.conversation_id })
-          .from(messages)
-          .where(eq(messages.id, messageId))
-          .limit(1);
-
-        if (msg?.conversation_id) {
-          io.to(`conversation:${msg.conversation_id}`).emit("message:reacted", {
-            messageId,
-            userId: user.id,
-            emoji,
-            action: result.action,
-          });
-        }
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Erreur";
-        socket.emit("error", { event: "message:react", message });
-      }
-    }
-  );
-
-  // ============================================================
-  // TYPING: START / STOP
-  // ============================================================
+  // TYPING
   socket.on("typing:start", (data: { conversationId: number }) => {
     socket.to(`conversation:${data.conversationId}`).emit("typing:user", {
       conversationId: data.conversationId,
@@ -295,7 +230,6 @@ export function registerSocketHandlers(
       typing: true,
     });
   });
-
   socket.on("typing:stop", (data: { conversationId: number }) => {
     socket.to(`conversation:${data.conversationId}`).emit("typing:user", {
       conversationId: data.conversationId,
@@ -306,172 +240,146 @@ export function registerSocketHandlers(
   });
 
   // ============================================================
-  // 🎙️ APPELS VOCAUX / VIDÉO - SIGNALING WEBRTC
+  // CALLS - SIGNALING WEBRTC
   // ============================================================
-  // Le serveur ne fait que RELAYER les events entre 2 users.
-  // Les flux audio/vidéo passent directement en P2P entre navigateurs.
 
-  // L'appelant initie l'appel
-  socket.on(
-    "call:initiate",
-    async (data: {
-      conversationId: number;
-      toUserId: number;
-      callType: "audio" | "video";
-    }) => {
-      try {
-        const { conversationId, toUserId, callType } = data;
-        if (!conversationId || !toUserId) {
-          throw new Error("conversationId et toUserId requis");
-        }
+  socket.on("call:initiate", async (data: {
+    conversationId: number;
+    toUserId: number;
+    callType: "audio" | "video";
+  }) => {
+    try {
+      const { conversationId, toUserId, callType } = data;
+      if (!conversationId || !toUserId) throw new Error("IDs requis");
+      await getConversationById(conversationId, user.id);
+      const callId = `call_${Date.now()}_${user.id}_${toUserId}`;
+      io.to(`user:${toUserId}`).emit("call:incoming", {
+        callId, conversationId, callType,
+        fromUser: { id: user.id, username: user.username, firstName: user.firstName },
+      });
+      socket.emit("call:initiated", { callId });
 
-        // Vérifie que l'appelant est bien dans la conv
-        await getConversationById(conversationId, user.id);
+      // ⏱️ TIMEOUT : si personne ne répond dans 30s, on raccroche en "missed"
+      const timeout = setTimeout(async () => {
+        callTimeouts.delete(callId);
 
-        const callId = `call_${Date.now()}_${user.id}_${toUserId}`;
-
-        // Envoie la notification d'appel entrant au destinataire (room user:X)
-        io.to(`user:${toUserId}`).emit("call:incoming", {
-          callId,
-          conversationId,
-          callType,
-          fromUser: {
-            id: user.id,
-            username: user.username,
-            firstName: user.firstName,
-          },
-        });
-
-        console.log(
-          `📞 Appel ${callType} initié par #${user.id} → #${toUserId} (${callId})`
-        );
-
-        socket.emit("call:initiated", { callId });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Erreur";
-        socket.emit("call:error", { event: "call:initiate", message });
-      }
-    }
-  );
-
-  // Le destinataire accepte
-  socket.on(
-    "call:accept",
-    async (data: { callId: string; toUserId: number }) => {
-      try {
-        const { callId, toUserId } = data;
-        io.to(`user:${toUserId}`).emit("call:accepted", {
-          callId,
-          fromUserId: user.id,
-        });
-        console.log(`✅ Appel ${callId} accepté par #${user.id}`);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Erreur";
-        socket.emit("call:error", { event: "call:accept", message });
-      }
-    }
-  );
-
-  // Le destinataire refuse
-  socket.on(
-    "call:reject",
-    async (data: { callId: string; toUserId: number; reason?: string }) => {
-      try {
-        const { callId, toUserId, reason } = data;
-        io.to(`user:${toUserId}`).emit("call:rejected", {
-          callId,
-          fromUserId: user.id,
-          reason: reason ?? "declined",
-        });
-        console.log(`❌ Appel ${callId} refusé par #${user.id}`);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Erreur";
-        socket.emit("call:error", { event: "call:reject", message });
-      }
-    }
-  );
-
-  // L'un des deux raccroche
-  socket.on(
-    "call:hangup",
-    async (data: { callId: string; toUserId: number }) => {
-      try {
-        const { callId, toUserId } = data;
+        // Prévient les 2 clients
         io.to(`user:${toUserId}`).emit("call:hangup", {
           callId,
           fromUserId: user.id,
+          reason: "missed",
         });
-        console.log(`📴 Appel ${callId} raccroché par #${user.id}`);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Erreur";
-        socket.emit("call:error", { event: "call:hangup", message });
+        io.to(`user:${user.id}`).emit("call:hangup", {
+          callId,
+          fromUserId: toUserId,
+          reason: "missed",
+        });
+
+        // Crée le message d'historique
+        await createCallMessage(
+          io,
+          conversationId,
+          user.id,
+          callType,
+          "missed",
+          0
+        );
+
+        console.log(`⏱️ Appel ${callId} - timeout 30s (missed)`);
+      }, 30000);
+
+      callTimeouts.set(callId, timeout);
+      console.log(`📞 Appel ${callType} initié #${user.id} → #${toUserId}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erreur";
+      socket.emit("call:error", { event: "call:initiate", message });
+    }
+  });
+
+  socket.on("call:accept", (data: { callId: string; toUserId: number }) => {
+    clearCallTimeout(data.callId);
+    io.to(`user:${data.toUserId}`).emit("call:accepted", {
+      callId: data.callId, fromUserId: user.id,
+    });
+  });
+
+  socket.on("call:reject", async (data: {
+    callId: string;
+    toUserId: number;
+    reason?: string;
+    conversationId?: number;
+    callType?: "audio" | "video";
+  }) => {
+    try {
+      clearCallTimeout(data.callId);
+      io.to(`user:${data.toUserId}`).emit("call:rejected", {
+        callId: data.callId, fromUserId: user.id, reason: data.reason ?? "declined",
+      });
+      if (data.conversationId && data.callType) {
+        await createCallMessage(io, data.conversationId, user.id, data.callType, "rejected", 0);
       }
+    } catch (err) {
+      console.error("❌ Erreur call:reject:", err);
     }
-  );
+  });
 
-  // WebRTC : Offre (SDP)
-  socket.on(
-    "call:offer",
-    (data: { callId: string; toUserId: number; sdp: any }) => {
-      io.to(`user:${data.toUserId}`).emit("call:offer", {
-        callId: data.callId,
-        sdp: data.sdp,
-        fromUserId: user.id,
+  socket.on("call:hangup", async (data: {
+    callId: string;
+    toUserId: number;
+    conversationId?: number;
+    callType?: "audio" | "video";
+    duration?: number;
+  }) => {
+    try {
+      clearCallTimeout(data.callId);
+      io.to(`user:${data.toUserId}`).emit("call:hangup", {
+        callId: data.callId, fromUserId: user.id,
       });
+      if (data.conversationId && data.callType) {
+        await createCallMessage(io, data.conversationId, user.id, data.callType, "ended", data.duration ?? 0);
+      }
+    } catch (err) {
+      console.error("❌ Erreur call:hangup:", err);
     }
-  );
+  });
 
-  // WebRTC : Réponse (SDP)
-  socket.on(
-    "call:answer",
-    (data: { callId: string; toUserId: number; sdp: any }) => {
-      io.to(`user:${data.toUserId}`).emit("call:answer", {
-        callId: data.callId,
-        sdp: data.sdp,
-        fromUserId: user.id,
-      });
-    }
-  );
+  socket.on("call:offer", (data: { callId: string; toUserId: number; sdp: any }) => {
+    io.to(`user:${data.toUserId}`).emit("call:offer", {
+      callId: data.callId, sdp: data.sdp, fromUserId: user.id,
+    });
+  });
 
-  // WebRTC : ICE Candidate (traversée NAT)
-  socket.on(
-    "call:ice-candidate",
-    (data: { callId: string; toUserId: number; candidate: any }) => {
-      io.to(`user:${data.toUserId}`).emit("call:ice-candidate", {
-        callId: data.callId,
-        candidate: data.candidate,
-        fromUserId: user.id,
-      });
-    }
-  );
+  socket.on("call:answer", (data: { callId: string; toUserId: number; sdp: any }) => {
+    io.to(`user:${data.toUserId}`).emit("call:answer", {
+      callId: data.callId, sdp: data.sdp, fromUserId: user.id,
+    });
+  });
 
-  // Demande de passage en vidéo (vocal -> vidéo)
-  socket.on(
-    "call:request-video",
-    (data: { callId: string; toUserId: number }) => {
-      io.to(`user:${data.toUserId}`).emit("call:video-requested", {
-        callId: data.callId,
-        fromUserId: user.id,
-      });
-    }
-  );
+  socket.on("call:ice-candidate", (data: { callId: string; toUserId: number; candidate: any }) => {
+    io.to(`user:${data.toUserId}`).emit("call:ice-candidate", {
+      callId: data.callId, candidate: data.candidate, fromUserId: user.id,
+    });
+  });
 
-  // Acceptation du passage en vidéo
-  socket.on(
-    "call:accept-video",
-    (data: { callId: string; toUserId: number }) => {
-      io.to(`user:${data.toUserId}`).emit("call:video-accepted", {
-        callId: data.callId,
-        fromUserId: user.id,
-      });
-    }
-  );
-  // ============================================================
-  // DISCONNECT
-  // ============================================================
+  socket.on("call:request-video", (data: { callId: string; toUserId: number }) => {
+    io.to(`user:${data.toUserId}`).emit("call:video-requested", {
+      callId: data.callId, fromUserId: user.id,
+    });
+  });
+
+  socket.on("call:accept-video", (data: { callId: string; toUserId: number }) => {
+    io.to(`user:${data.toUserId}`).emit("call:video-accepted", {
+      callId: data.callId, fromUserId: user.id,
+    });
+  });
+
+  socket.on("call:reject-video", (data: { callId: string; toUserId: number }) => {
+    io.to(`user:${data.toUserId}`).emit("call:video-rejected", {
+      callId: data.callId, fromUserId: user.id,
+    });
+  });
+
   socket.on("disconnect", (reason) => {
-    console.log(
-      `🔌 User #${user.id} (@${user.username}) déconnecté (${reason})`
-    );
+    console.log(`🔌 User #${user.id} déconnecté (${reason})`);
   });
 }
