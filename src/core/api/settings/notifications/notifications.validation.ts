@@ -26,6 +26,12 @@ export const pushPrefsSchema = z.object({
 export type PushPrefsInput = z.infer<typeof pushPrefsSchema>;
 
 // ============================================================
+// 🆕 SONNERIE D'APPEL
+// ============================================================
+
+export const callRingtoneSchema = z.enum(["nature", "classic", "silent"]);
+
+// ============================================================
 // TOUTES LES PRÉFÉRENCES (PUT global)
 // ============================================================
 
@@ -40,6 +46,10 @@ export const allNotificationsSchema = z.object({
   push_order_updates: z.boolean().optional(),
   push_new_messages: z.boolean().optional(),
   push_social_activity: z.boolean().optional(),
+
+  // 🆕 Messagerie
+  notification_sound: z.boolean().optional(),
+  call_ringtone: callRingtoneSchema.optional(),
 });
 
 export type AllNotificationsInput = z.infer<typeof allNotificationsSchema>;

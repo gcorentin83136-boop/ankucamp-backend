@@ -61,6 +61,14 @@ function formatPrivacy(settings: any) {
     show_email: settings.show_email === 1,
     show_phone: settings.show_phone === 1,
     search_indexable: settings.search_indexable === 1,
+    // 🆕 Messagerie avancée
+    read_receipts: settings.read_receipts === 1,
+    online_status_visibility: settings.online_status_visibility,
+    typing_indicator: settings.typing_indicator === 1,
+    call_permissions: settings.call_permissions,
+    // 🆕 Notifications messagerie
+    notification_sound: settings.notification_sound === 1,
+    call_ringtone: settings.call_ringtone,
   };
 }
 
@@ -81,15 +89,13 @@ export async function updateAllPrivacy(
   userId: number,
   input: PrivacyInput
 ) {
-  const current = await getOrCreateSettings(userId);
+  await getOrCreateSettings(userId);
 
   const updates: any = { updated_at: new Date() };
 
+  // Profil
   if (input.profile_visibility !== undefined) {
     updates.profile_visibility = input.profile_visibility;
-  }
-  if (input.allow_messages_from !== undefined) {
-    updates.allow_messages_from = input.allow_messages_from;
   }
   if (input.show_email !== undefined) {
     updates.show_email = boolToInt(input.show_email);
@@ -99,6 +105,30 @@ export async function updateAllPrivacy(
   }
   if (input.search_indexable !== undefined) {
     updates.search_indexable = boolToInt(input.search_indexable);
+  }
+  // Messagerie
+  if (input.allow_messages_from !== undefined) {
+    updates.allow_messages_from = input.allow_messages_from;
+  }
+  // 🆕 Messagerie avancée
+  if (input.read_receipts !== undefined) {
+    updates.read_receipts = boolToInt(input.read_receipts);
+  }
+  if (input.online_status_visibility !== undefined) {
+    updates.online_status_visibility = input.online_status_visibility;
+  }
+  if (input.typing_indicator !== undefined) {
+    updates.typing_indicator = boolToInt(input.typing_indicator);
+  }
+  if (input.call_permissions !== undefined) {
+    updates.call_permissions = input.call_permissions;
+  }
+  // 🆕 Notifications messagerie
+  if (input.notification_sound !== undefined) {
+    updates.notification_sound = boolToInt(input.notification_sound);
+  }
+  if (input.call_ringtone !== undefined) {
+    updates.call_ringtone = input.call_ringtone;
   }
 
   const [updated] = await db
@@ -132,7 +162,6 @@ export async function updateProfileVisibility(
     .where(eq(userSettings.user_id, userId))
     .returning();
 
-  // Sync is_private
   await syncIsPrivate(userId, input.profile_visibility);
 
   console.log(
@@ -176,20 +205,14 @@ export async function canSendMessageTo(
   senderId: number,
   receiverId: number
 ): Promise<boolean> {
-  // Si c'est moi-même → oui
   if (senderId === receiverId) return true;
 
   const settings = await getOrCreateSettings(receiverId);
 
-  // Personne
   if (settings.allow_messages_from === "nobody") return false;
-
-  // Tout le monde
   if (settings.allow_messages_from === "everyone") return true;
 
-  // Seulement les amis → vérifier l'amitié
   if (settings.allow_messages_from === "friends") {
-    // Import dynamique pour éviter les cycles
     const { getRelationStatus } = await import(
       "../../friends/friends.service"
     );
@@ -207,17 +230,12 @@ export async function canViewProfile(
   viewerId: number | undefined,
   targetUserId: number
 ): Promise<boolean> {
-  // Soi-même → oui
   if (viewerId === targetUserId) return true;
 
   const settings = await getOrCreateSettings(targetUserId);
 
-  // Public → tout le monde
   if (settings.profile_visibility === "public") return true;
-
-  // Privé ou amis → nécessite auth + amitié
   if (!viewerId) return false;
-
   if (settings.profile_visibility === "private") return false;
 
   if (settings.profile_visibility === "friends") {
@@ -229,4 +247,66 @@ export async function canViewProfile(
   }
 
   return true;
+}
+
+/**
+ * 🆕 Vérifie si un user peut appeler un autre.
+ * Utilisé dans socket.handlers.ts > call:initiate
+ */
+export async function canCallUser(
+  callerId: number,
+  receiverId: number
+): Promise<boolean> {
+  if (callerId === receiverId) return true;
+
+  const settings = await getOrCreateSettings(receiverId);
+
+  if (settings.call_permissions === "nobody") return false;
+  if (settings.call_permissions === "everyone") return true;
+
+  if (settings.call_permissions === "friends") {
+    const { getRelationStatus } = await import(
+      "../../friends/friends.service"
+    );
+    const rel = await getRelationStatus(callerId, receiverId);
+    return rel.status === "friends";
+  }
+
+  return true;
+}
+
+/**
+ * 🆕 Vérifie si un user a activé les accusés de lecture.
+ * Utilisé dans socket.handlers.ts > message:read
+ */
+export async function hasReadReceiptsEnabled(
+  userId: number
+): Promise<boolean> {
+  const settings = await getOrCreateSettings(userId);
+  return settings.read_receipts === 1;
+}
+
+/**
+ * 🆕 Vérifie si un user a activé l'indicateur de frappe.
+ * Utilisé dans socket.handlers.ts > typing:start/stop
+ */
+export async function hasTypingIndicatorEnabled(
+  userId: number
+): Promise<boolean> {
+  const settings = await getOrCreateSettings(userId);
+  return settings.typing_indicator === 1;
+}
+
+/**
+ * 🆕 Retourne la visibilité du statut online d'un user.
+ * Utilisé dans ChatWindow.tsx pour afficher/masquer "En ligne"
+ */
+export async function getOnlineStatusVisibility(
+  userId: number
+): Promise<"everyone" | "friends" | "nobody"> {
+  const settings = await getOrCreateSettings(userId);
+  return (settings.online_status_visibility || "everyone") as
+    | "everyone"
+    | "friends"
+    | "nobody";
 }

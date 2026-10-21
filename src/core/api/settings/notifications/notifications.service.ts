@@ -12,10 +12,6 @@ import type {
 // HELPERS PRIVÉS
 // ============================================================
 
-/**
- * Récupère les settings d'un user, ou les crée s'ils n'existent pas.
- * (Lazy creation : utile pour les users créés avant ce module)
- */
 async function getOrCreateSettings(userId: number) {
   const [existing] = await db
     .select()
@@ -25,28 +21,20 @@ async function getOrCreateSettings(userId: number) {
 
   if (existing) return existing;
 
-  // Création avec valeurs par défaut
   const [created] = await db
     .insert(userSettings)
     .values({ user_id: userId })
     .returning();
 
   console.log(`⚙️  Settings créés (lazy) pour user #${userId}`);
-
   return created;
 }
 
-/**
- * Convertit un booléen en integer (0/1) pour la BDD.
- */
 function boolToInt(value: boolean | undefined): number | undefined {
   if (value === undefined) return undefined;
   return value ? 1 : 0;
 }
 
-/**
- * Convertit les settings BDD (0/1) en objet JSON avec booléens.
- */
 function formatSettings(settings: any) {
   return {
     email: {
@@ -59,6 +47,11 @@ function formatSettings(settings: any) {
       order_updates: settings.push_order_updates === 1,
       new_messages: settings.push_new_messages === 1,
       social_activity: settings.push_social_activity === 1,
+    },
+    // 🆕 Messagerie
+    messaging: {
+      notification_sound: settings.notification_sound === 1,
+      call_ringtone: settings.call_ringtone,
     },
   };
 }
@@ -82,7 +75,6 @@ export async function updateAllNotifications(
 ) {
   await getOrCreateSettings(userId);
 
-  // Construit l'objet de mise à jour
   const updates: any = { updated_at: new Date() };
 
   if (input.email_order_updates !== undefined)
@@ -100,6 +92,12 @@ export async function updateAllNotifications(
     updates.push_new_messages = boolToInt(input.push_new_messages);
   if (input.push_social_activity !== undefined)
     updates.push_social_activity = boolToInt(input.push_social_activity);
+
+  // 🆕 Messagerie
+  if (input.notification_sound !== undefined)
+    updates.notification_sound = boolToInt(input.notification_sound);
+  if (input.call_ringtone !== undefined)
+    updates.call_ringtone = input.call_ringtone;
 
   const [updated] = await db
     .update(userSettings)
@@ -168,10 +166,6 @@ export async function updatePushPrefs(
 // EXPORT : utile pour les autres services (emails, notifs)
 // ============================================================
 
-/**
- * Vérifie si un user veut recevoir un type de notification donné.
- * Utilisé dans le helper `notify()` et `sendEmail()`.
- */
 export async function shouldSendEmail(
   userId: number,
   type: "order_updates" | "new_messages" | "social_activity" | "marketing"
@@ -192,9 +186,6 @@ export async function shouldSendEmail(
   }
 }
 
-/**
- * Vérifie si un user veut recevoir un type de push donné.
- */
 export async function shouldSendPush(
   userId: number,
   type: "order_updates" | "new_messages" | "social_activity"

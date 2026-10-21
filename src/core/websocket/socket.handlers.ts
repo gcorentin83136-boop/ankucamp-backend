@@ -17,6 +17,11 @@ import {
 } from "../api/conversations/conversations.service";
 import type { AuthenticatedSocket } from "./socket.auth";
 import { notifyNewMessage } from "../notifications/social-notifications.helper";
+import {
+  hasReadReceiptsEnabled,
+  hasTypingIndicatorEnabled,
+  canCallUser,
+} from "../api/settings/privacy/privacy.service";
 
 // ============================================================
 // HELPERS
@@ -211,6 +216,11 @@ export function registerSocketHandlers(
   socket.on("message:read", async (data: { conversationId: number; untilMessageId?: number }) => {
     try {
       await markAsRead(data.conversationId, user.id, data.untilMessageId ?? null);
+
+      // 🆕 N'émet l'event "message:read" que si l'accusé de lecture est activé
+      const readReceiptsEnabled = await hasReadReceiptsEnabled(user.id);
+      if (!readReceiptsEnabled) return;
+
       socket.to(`conversation:${data.conversationId}`).emit("message:read", {
         conversationId: data.conversationId,
         userId: user.id,
@@ -224,7 +234,11 @@ export function registerSocketHandlers(
   });
 
   // TYPING
-  socket.on("typing:start", (data: { conversationId: number }) => {
+  socket.on("typing:start", async (data: { conversationId: number }) => {
+    // 🆕 N'émet que si l'indicateur de frappe est activé
+    const typingEnabled = await hasTypingIndicatorEnabled(user.id);
+    if (!typingEnabled) return;
+
     socket.to(`conversation:${data.conversationId}`).emit("typing:user", {
       conversationId: data.conversationId,
       userId: user.id,
@@ -232,7 +246,11 @@ export function registerSocketHandlers(
       typing: true,
     });
   });
-  socket.on("typing:stop", (data: { conversationId: number }) => {
+  socket.on("typing:stop", async (data: { conversationId: number }) => {
+    // 🆕 N'émet que si l'indicateur de frappe est activé
+    const typingEnabled = await hasTypingIndicatorEnabled(user.id);
+    if (!typingEnabled) return;
+
     socket.to(`conversation:${data.conversationId}`).emit("typing:user", {
       conversationId: data.conversationId,
       userId: user.id,
@@ -254,6 +272,12 @@ export function registerSocketHandlers(
       const { conversationId, toUserId, callType } = data;
       if (!conversationId || !toUserId) throw new Error("IDs requis");
       await getConversationById(conversationId, user.id);
+
+      // 🆕 Vérifie que le destinataire autorise les appels
+      const canCall = await canCallUser(user.id, toUserId);
+      if (!canCall) {
+        throw new Error("Ce destinataire n'accepte pas les appels");
+      }
 
       // Récupère l'avatar de l'appelant
       const [caller] = await db

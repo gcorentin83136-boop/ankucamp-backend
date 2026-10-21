@@ -10,6 +10,7 @@ import {
 } from "../../db/schema";
 import { AppError } from "../../errors/AppError";
 import { getBlockersOf } from "../users/blocks.service";
+import { canSendMessageTo } from "../settings/privacy/privacy.service";
 import type {
   CreateConversationInput,
   UpdateConversationInput,
@@ -478,6 +479,27 @@ export async function sendMessage(
   input: SendMessageInput
 ) {
   await assertParticipant(conversationId, senderId);
+  // 🆕 Vérifie que les autres participants autorisent les messages
+  const otherParticipants = await db
+    .select({ user_id: conversationParticipants.user_id })
+    .from(conversationParticipants)
+    .where(
+      and(
+        eq(conversationParticipants.conversation_id, conversationId),
+        isNull(conversationParticipants.left_at),
+        ne(conversationParticipants.user_id, senderId)
+      )
+    );
+
+  for (const p of otherParticipants) {
+    const allowed = await canSendMessageTo(senderId, p.user_id);
+    if (!allowed) {
+      throw new AppError(
+        "Ce destinataire n'accepte pas les messages",
+        403
+      );
+    }
+  }
 
   // 🚫 Blocage : si un autre participant m'a bloqué, je ne peux pas envoyer
   const blockers = await getBlockersOf(senderId);

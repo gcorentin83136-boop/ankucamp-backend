@@ -37,7 +37,7 @@ export const users = pgTable("users", {
   provider: varchar("provider", { length: 50 }).default("local").notNull(),
   provider_id: varchar("provider_id", { length: 255 }),
   stripe_account_id: varchar("stripe_account_id", { length: 255 }),
-    stripe_customer_id: varchar("stripe_customer_id", { length: 255 }),
+  stripe_customer_id: varchar("stripe_customer_id", { length: 255 }),
   stripe_account_status: varchar("stripe_account_status", { length: 50 })
     .default("not_connected")
     .notNull(),
@@ -268,7 +268,7 @@ export const messageReactions = pgTable("message_reactions", {
 export const notifications = pgTable("notifications", {
   id: serial("id").primaryKey(),
   user_id: integer("user_id").notNull(),
-    actor_id: integer("actor_id"),
+  actor_id: integer("actor_id"),
   type: varchar("type", { length: 50 }).notNull(),
   title: varchar("title", { length: 255 }).notNull(),
   content: text("content").notNull(),
@@ -435,6 +435,19 @@ export const userSettings = pgTable("user_settings", {
     .default("everyone")
     .notNull(),
   search_indexable: integer("search_indexable").default(1).notNull(),
+  // 🆕 Paramètres avancés messagerie
+  read_receipts: integer("read_receipts").default(1).notNull(),
+  online_status_visibility: varchar("online_status_visibility", { length: 20 })
+    .default("everyone")
+    .notNull(),
+  typing_indicator: integer("typing_indicator").default(1).notNull(),
+  call_permissions: varchar("call_permissions", { length: 20 })
+    .default("everyone")
+    .notNull(),
+  notification_sound: integer("notification_sound").default(1).notNull(),
+  call_ringtone: varchar("call_ringtone", { length: 50 })
+    .default("nature")
+    .notNull(),
   language: varchar("language", { length: 5 }).default("fr").notNull(),
   timezone: varchar("timezone", { length: 50 })
     .default("Europe/Paris")
