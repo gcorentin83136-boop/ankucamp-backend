@@ -173,7 +173,8 @@ export async function listEvents(query: ListEventsQuery, viewerId?: number) {
   const { type, city, from, to, upcoming, limit, offset } = query;
   const now = new Date();
 
-  const conditions: any[] = [eq(events.status, "published")];
+  // const conditions: any[] = [eq(events.status, "published")]; // TEMPORAIREMENT DÉSACTIVÉ POUR TEST
+  const conditions: any[] = []; 
 
   if (type !== "all") conditions.push(eq(events.type, type));
   if (city) {
