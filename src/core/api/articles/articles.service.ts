@@ -1,3 +1,4 @@
+import { notify } from "../../notifications/notifications.helper";
 import {
   eq,
   and,
@@ -330,6 +331,30 @@ export async function toggleArticleLike(articleId: number, userId: number) {
       .update(articles)
       .set({ likes_count: sql`${articles.likes_count} + 1` })
       .where(eq(articles.id, articleId));
+
+    // 🆕 NOTIFICATION DE LIKE
+    if (article.author_id !== userId) {
+      try {
+        const [liker] = await db
+          .select({ first_name: users.first_name, last_name: users.last_name })
+          .from(users)
+          .where(eq(users.id, userId))
+          .limit(1);
+          
+        const name = liker ? `${liker.first_name} ${liker.last_name}` : "Quelqu'un";
+        
+        await notify(
+          article.author_id,
+          "social",
+          `❤️ ${name} a aimé ton article`,
+          `"${article.title}" — Clique pour voir.`,
+          `/articles/${article.slug}`
+        );
+      } catch (err) {
+        console.error("❌ Erreur notif like:", err);
+      }
+    }
+
     return { liked: true };
   }
 }

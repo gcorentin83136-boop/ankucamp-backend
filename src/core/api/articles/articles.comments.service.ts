@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 // ANKU — Service Commentaires d'articles
 // ============================================================
 import { eq, and, desc, asc, inArray } from "drizzle-orm";
@@ -12,6 +12,7 @@ import {
 } from "../../db/schema";
 import { AppError } from "../../errors/AppError";
 import { getBadgesForUsers } from "../badges/badges.service";
+import { notify } from "../../notifications/notifications.helper";
 import type { CreateCommentInput } from "./articles.comments.validation";
 
 // ============================================================
@@ -124,9 +125,10 @@ function buildCommentTree(comments: any[]): any[] {
 async function notifyCommentAuthor(
   recipientId: number,
   commenterId: number,
-  articleId: number,
+  articleSlug: string,
   articleTitle: string,
-  isReply: boolean
+  isReply: boolean,
+  targetCommentId: number
 ) {
   if (recipientId === commenterId) return;
 
@@ -144,17 +146,23 @@ async function notifyCommentAuthor(
       ? `${commenter.first_name} ${commenter.last_name}`
       : "Quelqu'un";
 
-    await db.insert(notifications).values({
-      user_id: recipientId,
-      type: "comment",
-      title: isReply
-        ? "Nouvelle réponse à ton commentaire"
-        : "Nouveau commentaire",
-      content: isReply
-        ? `${name} a répondu à ton commentaire sur "${articleTitle}".`
-        : `${name} a commenté ton article "${articleTitle}".`,
-      link: `/articles/${articleId}`,
-    });
+    const title = isReply
+      ? "Nouvelle réponse à ton commentaire"
+      : "Nouveau commentaire";
+      
+    const content = isReply
+      ? `${name} a répondu à ton commentaire sur "${articleTitle}".`
+      : `${name} a commenté ton article "${articleTitle}".`;
+
+    // 🆕 On utilise le helper centralisé (qui gère le WebSocket et les Pushs)
+    await notify(
+      recipientId,
+      "social",
+      title,
+      content,
+      `/articles/${articleSlug}#comment-${targetCommentId}`,
+      { actorId: commenterId }
+    );
   } catch (err) {
     console.error("❌ Erreur notif comment:", err);
   }
@@ -191,6 +199,8 @@ export async function createArticleComment(
 ) {
   const article = await getArticleOr404(articleId);
 
+  let parentAuthorId: number | null = null;
+
   if (input.parent_comment_id) {
     const [parent] = await db
       .select()
@@ -205,22 +215,7 @@ export async function createArticleComment(
         400
       );
     }
-
-    await notifyCommentAuthor(
-      parent.author_id,
-      authorId,
-      articleId,
-      article.title,
-      true
-    );
-  } else {
-    await notifyCommentAuthor(
-      article.author_id,
-      authorId,
-      articleId,
-      article.title,
-      false
-    );
+    parentAuthorId = parent.author_id;
   }
 
   const [created] = await db
@@ -233,6 +228,27 @@ export async function createArticleComment(
       parent_comment_id: input.parent_comment_id ?? null,
     })
     .returning();
+
+  // 🆕 On notifie APRES avoir créé le commentaire pour avoir son ID (created.id)
+  if (input.parent_comment_id && parentAuthorId) {
+    await notifyCommentAuthor(
+      parentAuthorId,
+      authorId,
+      article.slug,
+      article.title,
+      true,
+      created.id
+    );
+  } else {
+    await notifyCommentAuthor(
+      article.author_id,
+      authorId,
+      article.slug,
+      article.title,
+      false,
+      created.id
+    );
+  }
 
   const [enriched] = await enrichComments([created], authorId);
   return enriched;
@@ -339,6 +355,39 @@ export async function toggleCommentReaction(
     user_id: userId,
     emoji,
   });
+
+  // 🆕 NOTIFICATION DE RÉACTION SUR UN COMMENTAIRE
+  if (comment.author_id !== userId) {
+    try {
+      // On récupère les infos de l'article pour avoir le slug
+      const [article] = await db
+        .select({ slug: articles.slug, title: articles.title })
+        .from(articles)
+        .where(eq(articles.id, comment.article_id))
+        .limit(1);
+
+      if (article) {
+        const [reactor] = await db
+          .select({ first_name: users.first_name, last_name: users.last_name })
+          .from(users)
+          .where(eq(users.id, userId))
+          .limit(1);
+          
+        const name = reactor ? `${reactor.first_name} ${reactor.last_name}` : "Quelqu'un";
+        
+        await notify(
+          comment.author_id,
+          "social",
+          `❤️ ${name} a réagi à ton commentaire`,
+          `Sur l'article "${article.title}".`,
+          `/articles/${article.slug}#comment-${commentId}`,
+          { actorId: userId }
+        );
+      }
+    } catch (err) {
+      console.error("❌ Erreur notif réaction commentaire:", err);
+    }
+  }
 
   return { action: "added", emoji };
 }
