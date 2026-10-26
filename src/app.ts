@@ -190,7 +190,7 @@ app.use("/contact", contactRoutes);
 app.use((_req, res) => {
   res.status(404).json({
     success: false,
-    message: "Route non trouvÃ©e",
+    message: "Route non trouvée",
   });
 });
 

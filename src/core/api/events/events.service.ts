@@ -546,8 +546,9 @@ export async function registerToEvent(eventId: number, userId: number) {
   if (event.organizer_id === userId) {
     throw new AppError("Tu ne peux pas t'inscrire à ton propre événement", 400);
   }
-  if (event.start_at < new Date()) {
-    throw new AppError("Cet événement est déjà passé", 400);
+  const eventEnd = event.end_at ? new Date(event.end_at) : new Date(event.start_at);
+  if (eventEnd < new Date()) {
+    throw new AppError("Cet événement est déjà terminé", 400);
   }
 
   const [existing] = await db
@@ -676,4 +677,41 @@ export async function unregisterFromEvent(eventId: number, userId: number) {
     .where(eq(eventRegistrations.id, reg.id));
 
   return { success: true };
+}
+// ============================================================
+// LECTURE POUR BUYER (Mes inscriptions)
+// ============================================================
+export async function getMyRegisteredEvents(userId: number) {
+  const regs = await db
+    .select()
+    .from(eventRegistrations)
+    .where(
+      and(
+        eq(eventRegistrations.user_id, userId),
+        inArray(eventRegistrations.status, ["registered", "waitlist", "attended"])
+      )
+    );
+
+  const eventIds = regs.map((r) => r.event_id);
+  if (eventIds.length === 0) return [];
+
+  const rows = await db
+    .select()
+    .from(events)
+    .where(inArray(events.id, eventIds))
+    .orderBy(asc(events.start_at));
+
+  return Promise.all(rows.map((e) => enrichEvent(e, userId)));
+}
+
+// ============================================================
+// LECTURE POUR ADMIN (Tous les événements)
+// ============================================================
+export async function getAllEventsForAdmin() {
+  const rows = await db
+    .select()
+    .from(events)
+    .orderBy(desc(events.created_at));
+
+  return Promise.all(rows.map((e) => enrichEvent(e, 1))); // viewerId 1 pour l'admin
 }

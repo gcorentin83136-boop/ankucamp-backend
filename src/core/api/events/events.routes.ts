@@ -10,6 +10,8 @@ import {
   nearby,
   getOne,
   myEvents,
+  myRegisteredEvents,
+  adminListEvents,
   feedEvents,
   registrations,
   create,
@@ -28,7 +30,7 @@ const router = Router();
 
 router.get("/", authOptionalMiddleware, asyncHandler(list));
 router.get("/nearby", authOptionalMiddleware, asyncHandler(nearby));
-router.get("/me", authMiddleware, asyncHandler(myEvents));
+router.get("/me", authMiddleware, asyncHandler(myEvents));`nrouter.get("/me/registrations", authMiddleware, asyncHandler(myRegisteredEvents));
 router.get("/feed", authMiddleware, asyncHandler(feedEvents));
 
 router.post(

@@ -13,6 +13,8 @@ import {
   getEventsNearby,
   getEventById,
   getMyEvents,
+  getMyRegisteredEvents,
+  getAllEventsForAdmin,
   getEventsFeed,
   getEventRegistrations,
   createEvent,
@@ -178,4 +180,16 @@ export async function unregister(req: AuthRequest, res: Response) {
 
   const result = await unregisterFromEvent(id, req.user.id);
   return res.json(result);
+}
+export async function myRegisteredEvents(req: AuthRequest, res: Response) {
+  if (!req.user) throw new AppError("Non authentifié", 401);
+  const list = await getMyRegisteredEvents(req.user.id);
+  return res.json({ success: true, count: list.length, events: list });
+}
+
+export async function adminListEvents(req: AuthRequest, res: Response) {
+  if (!req.user) throw new AppError("Non authentifié", 401);
+  // Note: Le middleware requireRole('admin') est géré dans la route
+  const list = await getAllEventsForAdmin();
+  return res.json({ success: true, count: list.length, events: list });
 }
