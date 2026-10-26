@@ -319,7 +319,21 @@ export async function getEventRegistrations(
     )
     .orderBy(asc(eventRegistrations.created_at));
 
-  return rows;
+  // 🆕 On mappe les résultats pour correspondre au type EventRegistration du frontend
+  return rows.map((r) => ({
+    id: r.id,
+    event_id: eventId,
+    user_id: r.user_id,
+    status: r.status,
+    created_at: r.created_at,
+    user: {
+      id: r.user_id,
+      first_name: r.first_name,
+      last_name: r.last_name,
+      username: r.username,
+      avatar_url: r.avatar_url,
+    },
+  }));
 }
 
 // ============================================================
