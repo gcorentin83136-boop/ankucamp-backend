@@ -572,7 +572,7 @@ export async function registerToEvent(eventId: number, userId: number) {
       .set({ status: newStatus })
       .where(eq(eventRegistrations.id, existing.id));
 
-    await notifyOrganizer(event.organizer_id, event.title, userId);
+    await notifyOrganizer(event.organizer_id, event.id, event.title, userId);
     return { success: true, status: newStatus };
   }
 
@@ -584,7 +584,7 @@ export async function registerToEvent(eventId: number, userId: number) {
     status,
   });
 
-  await notifyOrganizer(event.organizer_id, event.title, userId);
+  await notifyOrganizer(event.organizer_id, event.id, event.title, userId);
 
   // Notifier les amis de l'inscrit
   try {

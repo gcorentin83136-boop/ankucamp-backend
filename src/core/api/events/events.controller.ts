@@ -91,7 +91,8 @@ export async function registrations(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifié", 401);
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) throw new AppError("ID invalide", 400);
-  const list = await getEventRegistrations(id, req.user.id);
+  const isAdmin = req.user.role === 'admin';
+  const list = await getEventRegistrations(id, req.user.id, isAdmin);
   return res.json({ success: true, count: list.length, registrations: list });
 }
 
