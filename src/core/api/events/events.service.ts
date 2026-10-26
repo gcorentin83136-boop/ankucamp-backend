@@ -280,7 +280,8 @@ export async function getEventsFeed(userId: number) {
 
 export async function getEventRegistrations(
   eventId: number,
-  organizerId: number
+  userId: number,
+  isAdmin = false
 ) {
   const [event] = await db
     .select()
@@ -289,7 +290,7 @@ export async function getEventRegistrations(
     .limit(1);
 
   if (!event) throw new AppError("Événement introuvable", 404);
-  if (event.organizer_id !== organizerId) {
+  if (!isAdmin && event.organizer_id !== userId) {
     throw new AppError("Tu n'es pas l'organisateur de cet événement", 403);
   }
 
@@ -632,6 +633,7 @@ async function computeRegistrationStatus(
 
 async function notifyOrganizer(
   organizerId: number,
+  eventId: number,
   eventTitle: string,
   registrantId: number
 ) {
