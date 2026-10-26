@@ -30,8 +30,10 @@ const router = Router();
 
 router.get("/", authOptionalMiddleware, asyncHandler(list));
 router.get("/nearby", authOptionalMiddleware, asyncHandler(nearby));
-router.get("/me", authMiddleware, asyncHandler(myEvents));`nrouter.get("/me/registrations", authMiddleware, asyncHandler(myRegisteredEvents));
+router.get("/me", authMiddleware, asyncHandler(myEvents));
+router.get("/me/registrations", authMiddleware, asyncHandler(myRegisteredEvents));
 router.get("/feed", authMiddleware, asyncHandler(feedEvents));
+router.get("/admin/all", authMiddleware, requireRole("admin"), asyncHandler(adminListEvents));
 
 router.post(
   "/",
