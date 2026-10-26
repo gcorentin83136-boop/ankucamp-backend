@@ -128,9 +128,9 @@ async function maybeGeocodeEvent(input: CreateEventInput | UpdateEventInput) {
 
 async function enrichEvent(event: any, viewerId?: number) {
   const organizer = await getOrganizerInfo(event.organizer_id);
-  const registrations_count = await getRegistrationsCount(event.id);
+  const registered_count = await getRegistrationsCount(event.id);
 
-  let is_registered_by_me = false;
+  let is_registered = false;
   let my_registration_status: string | null = null;
 
   if (viewerId) {
@@ -146,7 +146,7 @@ async function enrichEvent(event: any, viewerId?: number) {
       .limit(1);
 
     if (reg) {
-      is_registered_by_me =
+      is_registered =
         reg.status === "registered" || reg.status === "waitlist";
       my_registration_status = reg.status;
     }
@@ -159,8 +159,8 @@ async function enrichEvent(event: any, viewerId?: number) {
     price: event.price !== null ? Number(event.price) : null,
     is_free: event.is_free === 1,
     organizer,
-    registrations_count,
-    is_registered_by_me,
+    registered_count,       // <-- Renommé pour le frontend
+    is_registered,          // <-- Renommé pour le frontend
     my_registration_status,
   };
 }
