@@ -692,6 +692,41 @@ export async function unregisterFromEvent(eventId: number, userId: number) {
     .set({ status: "cancelled" })
     .where(eq(eventRegistrations.id, reg.id));
 
+  // 🆕 NOTIFICATION D'ANNULATION
+  try {
+    const [event] = await db
+      .select({ title: events.title, organizer_id: events.organizer_id })
+      .from(events)
+      .where(eq(events.id, eventId))
+      .limit(1);
+
+    if (event && event.organizer_id !== userId) {
+      const [user] = await db
+        .select({ first_name: users.first_name, last_name: users.last_name })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+
+      const name = user ? `${user.first_name} ${user.last_name}` : "Quelqu'un";
+
+      await notify(
+        event.organizer_id,
+        "social",
+        "Désinscription",
+        `${name} ne participera plus à ton événement "${event.title}".`,
+        `/events/${eventId}`
+      );
+
+      await notifyAllAdmins(
+        "Désinscription",
+        `${name} s'est désinscrit de l'événement "${event.title}".`,
+        `/admin/events`
+      );
+    }
+  } catch (err) {
+    console.error("❌ Erreur notif désinscription:", err);
+  }
+
   return { success: true };
 }
 // ============================================================
