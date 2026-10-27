@@ -15,7 +15,6 @@ import {
   events,
   eventRegistrations,
   users,
-  notifications,
   friendships,
 } from "../../db/schema";
 import { AppError } from "../../errors/AppError";
@@ -24,6 +23,7 @@ import {
   notifyFriendsNewEvent,
   notifyFriendsNewRegistration,
 } from "../../notifications/social-notifications.helper";
+import { notify, notifyAllAdmins } from "../../notifications/notifications.helper";
 import type {
   CreateEventInput,
   UpdateEventInput,
@@ -86,25 +86,6 @@ async function getOrganizerInfo(organizerId: number) {
   return u ?? null;
 }
 
-async function notifyUser(
-  userId: number,
-  title: string,
-  content: string,
-  link: string | null
-) {
-  try {
-    await db.insert(notifications).values({
-      user_id: userId,
-      type: "event",
-      title,
-      content,
-      link,
-    });
-  } catch (err) {
-    console.error("❌ Erreur notification event:", err);
-  }
-}
-
 async function maybeGeocodeEvent(input: CreateEventInput | UpdateEventInput) {
   const hasCoords =
     input.latitude !== undefined &&
@@ -159,8 +140,8 @@ async function enrichEvent(event: any, viewerId?: number) {
     price: event.price !== null ? Number(event.price) : null,
     is_free: event.is_free === 1,
     organizer,
-    registered_count,       // <-- Renommé pour le frontend
-    is_registered,          // <-- Renommé pour le frontend
+    registered_count,
+    is_registered,
     my_registration_status,
   };
 }
@@ -173,7 +154,6 @@ export async function listEvents(query: ListEventsQuery, viewerId?: number) {
   const { type, city, from, to, upcoming, limit, offset } = query;
   const now = new Date();
 
-  // const conditions: any[] = [eq(events.status, "published")]; // TEMPORAIREMENT DÉSACTIVÉ POUR TEST
   const conditions: any[] = []; 
 
   if (type !== "all") conditions.push(eq(events.type, type));
@@ -319,7 +299,6 @@ export async function getEventRegistrations(
     )
     .orderBy(asc(eventRegistrations.created_at));
 
-  // 🆕 On mappe les résultats pour correspondre au type EventRegistration du frontend
   return rows.map((r) => ({
     id: r.id,
     event_id: eventId,
@@ -389,7 +368,6 @@ export async function createEvent(
     })
     .returning();
 
-  // Notifier les amis de l'organisateur (fire & forget)
   if (created.status === "published") {
     try {
       const friendIds = await getFriendIds(organizerId);
@@ -514,8 +492,9 @@ export async function cancelEvent(
     );
 
   for (const reg of registrations) {
-    await notifyUser(
+    await notify(
       reg.user_id,
+      "social",
       "Événement annulé",
       `L'événement "${event.title}" a été annulé.`,
       `/events/${eventId}`
@@ -601,7 +580,6 @@ export async function registerToEvent(eventId: number, userId: number) {
 
   await notifyOrganizer(event.organizer_id, event.id, event.title, userId);
 
-  // Notifier les amis de l'inscrit
   try {
     const friendIds = await getFriendIds(userId);
 
@@ -662,11 +640,12 @@ async function notifyOrganizer(
 
   const name = reg ? `${reg.first_name} ${reg.last_name}` : "Quelqu'un";
 
-  await notifyUser(
+  await notify(
     organizerId,
+    "social",
     "Nouvelle inscription",
     `${name} s'est inscrit à ton événement "${eventTitle}".`,
-    null
+    `/events/${eventId}`
   );
 }
 
@@ -692,7 +671,6 @@ export async function unregisterFromEvent(eventId: number, userId: number) {
     .set({ status: "cancelled" })
     .where(eq(eventRegistrations.id, reg.id));
 
-  // 🆕 NOTIFICATION D'ANNULATION
   try {
     const [event] = await db
       .select({ title: events.title, organizer_id: events.organizer_id })
@@ -729,6 +707,7 @@ export async function unregisterFromEvent(eventId: number, userId: number) {
 
   return { success: true };
 }
+
 // ============================================================
 // LECTURE POUR BUYER (Mes inscriptions)
 // ============================================================
@@ -764,5 +743,5 @@ export async function getAllEventsForAdmin() {
     .from(events)
     .orderBy(desc(events.created_at));
 
-  return Promise.all(rows.map((e) => enrichEvent(e, 1))); // viewerId 1 pour l'admin
+  return Promise.all(rows.map((e) => enrichEvent(e, 1)));
 }
