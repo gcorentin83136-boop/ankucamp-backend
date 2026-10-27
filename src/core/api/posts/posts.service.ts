@@ -192,6 +192,35 @@ async function enrichPost(
     }
   }
 
+  // 🆕 RÉCUPÉRATION DE L'ARTICLE PARTAGÉ
+  let sharedArticle: any = null;
+  if (post.shared_article_id) {
+    const [art] = await db
+      .select()
+      .from(articles)
+      .where(eq(articles.id, post.shared_article_id))
+      .limit(1);
+
+    if (art) {
+      const [artAuthor] = await db
+        .select({
+          id: users.id,
+          first_name: users.first_name,
+          last_name: users.last_name,
+          username: users.username,
+          avatar_url: users.avatar_url,
+        })
+        .from(users)
+        .where(eq(users.id, art.author_id))
+        .limit(1);
+
+      sharedArticle = {
+        ...art,
+        author: artAuthor,
+      };
+    }
+  }
+
   return {
     ...post,
     media_urls: post.media_urls ? JSON.parse(post.media_urls) : [],
@@ -199,6 +228,7 @@ async function enrichPost(
     liked_by_me: likedByMe,
     shared_from: sharedFrom,
     shared_event: sharedEvent,
+    shared_article: sharedArticle,
   };
 }
 
@@ -229,34 +259,33 @@ export async function createPost(authorId: number, input: CreatePostInput) {
     })
     .returning();
 
-  // 🔔 Notif amis (fire & forget) — uniquement si le post n'est pas privé
-    if (visibility !== "private") {
-      try {
-        const [author] = await db
-          .select({ first_name: users.first_name, last_name: users.last_name })
-          .from(users)
-          .where(eq(users.id, authorId))
-          .limit(1);
+  if (visibility !== "private") {
+    try {
+      const [author] = await db
+        .select({ first_name: users.first_name, last_name: users.last_name })
+        .from(users)
+        .where(eq(users.id, authorId))
+        .limit(1);
 
-        const friendIds = await getFriendIds(authorId);
-        if (friendIds.length > 0 && author) {
-          const authorName = `${author.first_name} ${author.last_name}`.trim();
-          notifyFriendsNewPost(
-            friendIds,
-            created.id,
-            authorName,
-            content ?? "",
-            authorId
-          ).catch((err) =>
-            console.error("❌ Erreur notif post amis:", err)
-          );
-        }
-      } catch (err) {
-        console.error("❌ Erreur préparation notif post amis:", err);
+      const friendIds = await getFriendIds(authorId);
+      if (friendIds.length > 0 && author) {
+        const authorName = `${author.first_name} ${author.last_name}`.trim();
+        notifyFriendsNewPost(
+          friendIds,
+          created.id,
+          authorName,
+          content ?? "",
+          authorId
+        ).catch((err) =>
+          console.error("❌ Erreur notif post amis:", err)
+        );
       }
+    } catch (err) {
+      console.error("❌ Erreur préparation notif post amis:", err);
     }
+  }
 
-    return enrichPost(created, authorId);
+  return enrichPost(created, authorId);
 }
 
 // ============================================================
@@ -290,8 +319,6 @@ export async function getFeed(viewerId: number, query: ListPostsQuery) {
   const { limit, offset } = query;
 
   const friendIds = await getFriendIds(viewerId);
-
-  // 🚫 Exclure les utilisateurs bloqués (dans les 2 sens)
   const hiddenIds = await getHiddenUserIds(viewerId);
 
   const conditions: any[] = [eq(posts.visibility, "public")];
@@ -322,7 +349,6 @@ export async function getFeed(viewerId: number, query: ListPostsQuery) {
     rows.map((p) => enrichPost(p, viewerId, badgesMap))
   );
 
-  // Événements à venir organisés par mes amis
   let eventsFromFriends: any[] = [];
   if (friendIds.length > 0) {
     const eventRows = await db
@@ -481,8 +507,7 @@ export async function toggleLike(postId: number, userId: number) {
 
   if (!post) throw new AppError("Post introuvable", 404);
 
-    // 🚫 Bloqué / restreint → interdit de liker
-    await assertCanInteract(userId, post.author_id, "liker ce post");
+  await assertCanInteract(userId, post.author_id, "liker ce post");
 
   const [existing] = await db
     .select()
@@ -571,8 +596,7 @@ export async function addComment(
 
   if (!post) throw new AppError("Post introuvable", 404);
 
-    // 🚫 Bloqué / restreint → interdit de commenter
-    await assertCanInteract(authorId, post.author_id, "commenter ce post");
+  await assertCanInteract(authorId, post.author_id, "commenter ce post");
 
   if (input.parent_comment_id) {
     const [parent] = await db
@@ -597,7 +621,7 @@ export async function addComment(
       author_id: authorId,
       content: input.content,
       parent_comment_id: input.parent_comment_id ?? null,
-        media_url: input.media_url ?? null,
+      media_url: input.media_url ?? null,
     })
     .returning();
 
@@ -663,7 +687,7 @@ export async function getComments(
       author_id: postComments.author_id,
       content: postComments.content,
       parent_comment_id: postComments.parent_comment_id,
-        media_url: postComments.media_url,
+      media_url: postComments.media_url,
       created_at: postComments.created_at,
       author_first_name: users.first_name,
       author_last_name: users.last_name,
@@ -674,13 +698,13 @@ export async function getComments(
     .from(postComments)
     .leftJoin(users, eq(users.id, postComments.author_id))
     .where(
-        hiddenIds.length > 0
-          ? and(
-              eq(postComments.post_id, postId),
-              notInArray(postComments.author_id, hiddenIds)
-            )
-          : eq(postComments.post_id, postId)
-      )
+      hiddenIds.length > 0
+        ? and(
+            eq(postComments.post_id, postId),
+            notInArray(postComments.author_id, hiddenIds)
+          )
+        : eq(postComments.post_id, postId)
+    )
     .orderBy(postComments.created_at);
 
   const badgesMap = await getBadgesForUsers(all.map((c) => c.author_id));
