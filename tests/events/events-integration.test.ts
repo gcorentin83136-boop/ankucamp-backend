@@ -158,7 +158,7 @@ describe("Events integration", () => {
   });
 
   describe("GET /events/:id", () => {
-    it("retourne le détail avec is_registered_by_me", async () => {
+    it("retourne le détail avec is_registered", async () => {
       const { organizer, buyer } = await setupOrganizer();
 
       const createRes = await request(app)
@@ -176,8 +176,8 @@ describe("Events integration", () => {
         .set("Authorization", buyer.authorization);
 
       expect(res.status).toBe(200);
-      expect(res.body.event.is_registered_by_me).toBe(false);
-      expect(res.body.event.registrations_count).toBe(0);
+      expect(res.body.event.is_registered).toBe(false);
+      expect(res.body.event.registered_count).toBe(0);
     });
 
     it("404 si inexistant", async () => {
