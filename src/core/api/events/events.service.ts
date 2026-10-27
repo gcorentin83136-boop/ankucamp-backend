@@ -497,7 +497,7 @@ export async function cancelEvent(
       "social",
       "Événement annulé",
       `L'événement "${event.title}" a été annulé.`,
-      `/events/${eventId}`
+      `/dashboard/shop/events?event=${eventId}`
     );
   }
 
@@ -645,7 +645,7 @@ async function notifyOrganizer(
     "social",
     "Nouvelle inscription",
     `${name} s'est inscrit à ton événement "${eventTitle}".`,
-    `/events/${eventId}`
+    `/dashboard/shop/events?event=${eventId}`
   );
 }
 
@@ -692,13 +692,13 @@ export async function unregisterFromEvent(eventId: number, userId: number) {
         "social",
         "Désinscription",
         `${name} ne participera plus à ton événement "${event.title}".`,
-        `/events/${eventId}`
+        `/dashboard/shop/events?event=${eventId}`
       );
 
       await notifyAllAdmins(
         "Désinscription",
         `${name} s'est désinscrit de l'événement "${event.title}".`,
-        `/admin/events`
+        `/admin/events?event=${eventId}`
       );
     }
   } catch (err) {
