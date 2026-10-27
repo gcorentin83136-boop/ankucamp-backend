@@ -568,6 +568,41 @@ export const eventRegistrations = pgTable("event_registrations", {
 });
 
 // ========================
+// EVENT LIKES (toggle like sur événement)
+// ========================
+export const eventLikes = pgTable("event_likes", {
+  id: serial("id").primaryKey(),
+  event_id: integer("event_id").notNull(),
+  user_id: integer("user_id").notNull(),
+  created_at: timestamp("created_at").defaultNow(),
+});
+
+// ========================
+// EVENT COMMENTS
+// ========================
+export const eventComments = pgTable("event_comments", {
+  id: serial("id").primaryKey(),
+  event_id: integer("event_id").notNull(),
+  author_id: integer("author_id").notNull(),
+  content: text("content").notNull(),
+  media_url: text("media_url"),
+  parent_comment_id: integer("parent_comment_id"),
+  created_at: timestamp("created_at").defaultNow(),
+  updated_at: timestamp("updated_at").defaultNow(),
+});
+
+// ========================
+// EVENT COMMENT REACTIONS (emoji)
+// ========================
+export const eventCommentReactions = pgTable("event_comment_reactions", {
+  id: serial("id").primaryKey(),
+  comment_id: integer("comment_id").notNull(),
+  user_id: integer("user_id").notNull(),
+  emoji: varchar("emoji", { length: 10 }).notNull(),
+  created_at: timestamp("created_at").defaultNow(),
+});
+
+// ========================
 // ARTICLES
 // ========================
 export const articles = pgTable("articles", {
@@ -676,16 +711,6 @@ export const promoUses = pgTable("promo_uses", {
   user_id: integer("user_id").notNull(),
   order_id: integer("order_id"),
   used_at: timestamp("used_at").defaultNow(),
-});
-
-// ========================
-// EVENT LIKES (toggle like sur événement)
-// ========================
-export const eventLikes = pgTable("event_likes", {
-  id: serial("id").primaryKey(),
-  event_id: integer("event_id").notNull(),
-  user_id: integer("user_id").notNull(),
-  created_at: timestamp("created_at").defaultNow(),
 });
 
 // ========================

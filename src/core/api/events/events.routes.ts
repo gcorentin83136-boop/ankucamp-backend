@@ -21,6 +21,13 @@ import {
   register,
   unregister,
 } from "./events.controller";
+import {
+  listComments,
+  createComment,
+  updateComment,
+  removeComment,
+  reactComment,
+} from "./events.comments.controller";
 
 const router = Router();
 
@@ -41,6 +48,15 @@ router.post(
   requireRole("professionnel"),
   asyncHandler(create)
 );
+
+// ============================================================
+// COMMENTS (routes statiques AVANT /:id)
+// ============================================================
+router.get("/:eventId/comments", authOptionalMiddleware, asyncHandler(listComments));
+router.post("/:eventId/comments", authMiddleware, asyncHandler(createComment));
+router.put("/comments/:commentId", authMiddleware, asyncHandler(updateComment));
+router.delete("/comments/:commentId", authMiddleware, asyncHandler(removeComment));
+router.post("/comments/:commentId/reactions", authMiddleware, asyncHandler(reactComment));
 
 // ============================================================
 // ROUTES DYNAMIQUES /:id
