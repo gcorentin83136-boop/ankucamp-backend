@@ -608,10 +608,7 @@ export async function addComment(
     if (!parent || parent.post_id !== postId) {
       throw new AppError("Commentaire parent introuvable", 404);
     }
-
-    if (parent.parent_comment_id !== null) {
-      throw new AppError("Tu ne peux pas répondre à une réponse", 400);
-    }
+    // 🆕 Blocage retiré pour autoriser les réponses aux réponses
   }
 
   const [created] = await db
