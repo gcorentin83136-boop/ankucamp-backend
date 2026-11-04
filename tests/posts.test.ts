@@ -593,7 +593,8 @@ describe("Posts — Commentaires", () => {
     expect(res.body.comment.parent_comment_id).toBe(commentId);
   });
 
-  it("rejette une réponse à une réponse (400)", async () => {
+  // 🆕 Le test est maintenant mis à jour pour accepter la réponse à une réponse
+  it("accepte une réponse à une réponse (201)", async () => {
     // Récupère la réponse
     const listRes = await request(app).get(`/posts/${postId}/comments`);
     const root = listRes.body.comments.find(
@@ -606,7 +607,9 @@ describe("Posts — Commentaires", () => {
       .set(authHeader(tokenA))
       .send({ content: "Réponse2", parent_comment_id: replyId });
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(201); // Attend maintenant un 201
+    expect(res.body.comment.content).toBe("Réponse2");
+    expect(res.body.comment.parent_comment_id).toBe(replyId);
   });
 
   it("liste les commentaires (200)", async () => {
