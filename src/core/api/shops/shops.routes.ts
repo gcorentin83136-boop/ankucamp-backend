@@ -20,7 +20,9 @@ const router = Router();
 router.get("/nearby", asyncHandler(listShopsNearby));
 
 router.get("/", asyncHandler(listShops));
-router.get("/owner/me", authMiddleware, asyncHandler(listMyShops));
+
+// 🆕 Remplacement de "/owner/me" par "/mine" pour matcher le frontend
+router.get("/mine", authMiddleware, asyncHandler(listMyShops));
 
 router.post(
   "/",
