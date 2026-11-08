@@ -124,9 +124,9 @@ describe("Shops module", () => {
   });
 
   // ============================================================
-  // GET /shops/owner/me
+  // GET /shops/mine
   // ============================================================
-  describe("GET /shops/owner/me", () => {
+  describe("GET /shops/mine", () => {
     it("retourne uniquement les boutiques de l'utilisateur connecté", async () => {
       const pro1 = await createUser({ email: "pro1@test.com", role: "professionnel" });
       const pro2 = await createUser({ email: "pro2@test.com", role: "professionnel" });
@@ -136,7 +136,7 @@ describe("Shops module", () => {
       await createShop({ owner_id: pro2.id, name: "Shop de pro2" });
 
       const res = await request(app)
-        .get("/shops/owner/me")
+        .get("/shops/mine")
         .set("Authorization", pro1.authorization);
 
       expect(res.status).toBe(200);
@@ -145,7 +145,7 @@ describe("Shops module", () => {
     });
 
     it("refuse sans token (401)", async () => {
-      const res = await request(app).get("/shops/owner/me");
+      const res = await request(app).get("/shops/mine");
 
       expect(res.status).toBe(401);
     });
