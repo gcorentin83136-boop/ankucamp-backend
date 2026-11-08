@@ -10,6 +10,7 @@ import {
   events,
   eventLikes,
   articles,
+  reels, // 🆕
 } from "../../db/schema";
 import { AppError } from "../../errors/AppError";
 import { getHiddenUserIds, assertCanInteract } from "../users/blocks.service";
@@ -192,7 +193,6 @@ async function enrichPost(
     }
   }
 
-  // 🆕 RÉCUPÉRATION DE L'ARTICLE PARTAGÉ
   let sharedArticle: any = null;
   if (post.shared_article_id) {
     const [art] = await db
@@ -221,6 +221,35 @@ async function enrichPost(
     }
   }
 
+  // 🆕 RÉCUPÉRATION DU REEL PARTAGÉ
+  let sharedReel: any = null;
+  if (post.shared_reel_id) {
+    const [r] = await db
+      .select()
+      .from(reels)
+      .where(eq(reels.id, post.shared_reel_id))
+      .limit(1);
+
+    if (r) {
+      const [rAuthor] = await db
+        .select({
+          id: users.id,
+          first_name: users.first_name,
+          last_name: users.last_name,
+          username: users.username,
+          avatar_url: users.avatar_url,
+        })
+        .from(users)
+        .where(eq(users.id, r.author_id))
+        .limit(1);
+
+      sharedReel = {
+        ...r,
+        author: rAuthor,
+      };
+    }
+  }
+
   return {
     ...post,
     media_urls: post.media_urls ? JSON.parse(post.media_urls) : [],
@@ -229,6 +258,7 @@ async function enrichPost(
     shared_from: sharedFrom,
     shared_event: sharedEvent,
     shared_article: sharedArticle,
+    shared_reel: sharedReel, // 🆕
   };
 }
 
@@ -608,7 +638,6 @@ export async function addComment(
     if (!parent || parent.post_id !== postId) {
       throw new AppError("Commentaire parent introuvable", 404);
     }
-    // 🆕 Blocage retiré pour autoriser les réponses aux réponses
   }
 
   const [created] = await db
@@ -921,6 +950,41 @@ export async function shareArticle(
       share_comment: input.share_comment ?? null,
     })
     .returning();
+
+  return enrichPost(created, userId);
+}
+
+// ============================================================
+// PARTAGER UN REEL EN POST (ANKU LIVE)
+// ============================================================
+export async function shareReelToFeed(
+  reelId: number,
+  userId: number,
+  input: ShareEventInput
+) {
+  const [reel] = await db
+    .select()
+    .from(reels)
+    .where(eq(reels.id, reelId))
+    .limit(1);
+
+  if (!reel) throw new AppError("Reel introuvable", 404);
+
+  const [created] = await db
+    .insert(posts)
+    .values({
+      author_id: userId,
+      content: input.share_comment ?? null,
+      visibility: input.visibility ?? "public",
+      shared_reel_id: reel.id,
+      share_comment: input.share_comment ?? null,
+    })
+    .returning();
+
+  await db
+    .update(reels)
+    .set({ shares_count: sql`${reels.shares_count} + 1` })
+    .where(eq(reels.id, reelId));
 
   return enrichPost(created, userId);
 }

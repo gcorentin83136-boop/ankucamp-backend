@@ -44,6 +44,7 @@ import categoriesAdminRoutes from "./core/api/categories/categories.admin.routes
 import auditRoutes from "./core/api/audit/audit.routes";
 import backupRoutes from "./core/api/backup/backup.routes";
 import contactRoutes from "./core/api/contact/contact.routes";
+import reelsRoutes from "./core/api/reels/reels.routes"; // 🆕
 
 import { errorHandler } from "./core/errors/errorHandler";
 import { globalLimiter } from "./config/security";
@@ -61,7 +62,7 @@ const app = express();
 setupSwagger(app);
 
 // ===============
-// SÃ‰CURITÃ‰
+// SÉCURITÉ
 // ===============
 app.use(helmet());
 
@@ -105,7 +106,7 @@ app.use("/payments/webhook", raw({ type: "application/json" }));
 app.use(express.json({ limit: "1mb" }));
 
 // ===============
-// SENTRY â€” attache le user au contexte (si dispo)
+// SENTRY — attache le user au contexte (si dispo)
 // ===============
 app.use(sentryUserMiddleware);
 
@@ -143,7 +144,7 @@ app.get("/", (_req, res) => {
 // ROUTES
 // ===============
 
-// âš ï¸ /auth/2fa AVANT /auth (ordre important !)
+// ⚠️ /auth/2fa AVANT /auth (ordre important !)
 app.use("/auth/2fa", twoFactorRoutes);
 app.use("/auth", authRoutes);
 
@@ -183,6 +184,7 @@ app.use("/admin/categories", categoriesAdminRoutes);
 app.use("/admin/audit", auditRoutes);
 app.use("/admin/backup", backupRoutes);
 app.use("/contact", contactRoutes);
+app.use("/reels", reelsRoutes); // 🆕
 
 // ===============
 // 404

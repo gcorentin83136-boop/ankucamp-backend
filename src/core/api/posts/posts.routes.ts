@@ -20,6 +20,7 @@ import {
   share,
   shareEventCtrl,
   shareArticleCtrl,
+  shareReelCtrl, // 🆕
   likeEvent,
 } from "./posts.controller";
 
@@ -44,6 +45,13 @@ router.post(
   "/share-event/:eventId",
   authMiddleware,
   asyncHandler(shareEventCtrl)
+);
+
+// 🆕 Partager un Reel (Anku Live)
+router.post(
+  "/share-reel/:reelId",
+  authMiddleware,
+  asyncHandler(shareReelCtrl)
 );
 
 // Like sur événement (via /posts pour cohérence front)

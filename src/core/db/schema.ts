@@ -364,6 +364,7 @@ export const posts = pgTable("posts", {
   shared_event_id: integer("shared_event_id"),
   shared_product_id: integer("shared_product_id"),
   shared_article_id: integer("shared_article_id"),
+  shared_reel_id: integer("shared_reel_id"), // 🆕 Ajouté
   share_comment: text("share_comment"),
   likes_count: integer("likes_count").default(0).notNull(),
   comments_count: integer("comments_count").default(0).notNull(),
@@ -413,6 +414,42 @@ export const follows = pgTable("follows", {
 });
 
 // ============================================================
+// ANKU LIVE (REELS) 🆕
+// ============================================================
+
+export const reels = pgTable("reels", {
+  id: serial("id").primaryKey(),
+  author_id: integer("author_id").notNull(),
+  media_url: text("media_url").notNull(),
+  media_type: varchar("media_type", { length: 20 }).default("video").notNull(), // 'video' | 'image'
+  thumbnail_url: text("thumbnail_url"),
+  caption: text("caption"),
+  visibility: varchar("visibility", { length: 20 }).default("public").notNull(),
+  shared_event_id: integer("shared_event_id"),
+  shared_article_id: integer("shared_article_id"),
+  shared_post_id: integer("shared_post_id"),
+  likes_count: integer("likes_count").default(0).notNull(),
+  comments_count: integer("comments_count").default(0).notNull(),
+  shares_count: integer("shares_count").default(0).notNull(),
+  created_at: timestamp("created_at").defaultNow(),
+});
+
+export const reelLikes = pgTable("reel_likes", {
+  id: serial("id").primaryKey(),
+  reel_id: integer("reel_id").notNull(),
+  user_id: integer("user_id").notNull(),
+  created_at: timestamp("created_at").defaultNow(),
+});
+
+export const reelComments = pgTable("reel_comments", {
+  id: serial("id").primaryKey(),
+  reel_id: integer("reel_id").notNull(),
+  author_id: integer("author_id").notNull(),
+  content: text("content").notNull(),
+  created_at: timestamp("created_at").defaultNow(),
+});
+
+// ============================================================
 // PARAMÈTRES
 // ============================================================
 
@@ -435,7 +472,6 @@ export const userSettings = pgTable("user_settings", {
     .default("everyone")
     .notNull(),
   search_indexable: integer("search_indexable").default(1).notNull(),
-  // 🆕 Paramètres avancés messagerie
   read_receipts: integer("read_receipts").default(1).notNull(),
   online_status_visibility: varchar("online_status_visibility", { length: 20 })
     .default("everyone")
@@ -622,7 +658,6 @@ export const articles = pgTable("articles", {
   created_at: timestamp("created_at").defaultNow(),
   updated_at: timestamp("updated_at").defaultNow(),
   visibility: varchar("visibility", { length: 20 }).default("public").notNull(),
-  // 'public' | 'friends' | 'followers' | 'private'
 });
 
 // ========================
@@ -634,6 +669,7 @@ export const articleLikes = pgTable("article_likes", {
   user_id: integer("user_id").notNull(),
   created_at: timestamp("created_at").defaultNow(),
 });
+
 // ========================
 // ARTICLE COMMENTS (avec réponses imbriquées + media)
 // ========================
@@ -720,18 +756,10 @@ export const auditLogs = pgTable("audit_logs", {
   id: serial("id").primaryKey(),
   admin_id: integer("admin_id").notNull(),
   action: varchar("action", { length: 50 }).notNull(),
-  // 'kyc_approve' | 'kyc_reject' | 'report_resolve' | 'report_dismiss'
-  // | 'refund_approve' | 'refund_reject' | 'badge_grant' | 'badge_revoke'
-  // | 'category_create' | 'category_update' | 'category_delete'
-  // | 'promo_create' | 'promo_update' | 'promo_delete'
-  // | 'user_ban' | 'user_delete' | 'event_cancel' | 'other'
   target_type: varchar("target_type", { length: 30 }),
-  // 'user' | 'shop' | 'product' | 'review' | 'kyc' | 'report' | 'refund'
-  // | 'badge' | 'category' | 'promo' | 'event' | 'post' | 'comment'
   target_id: integer("target_id"),
   description: text("description"),
   metadata: text("metadata"),
-  // JSON stringifié de détails libres
   ip_address: varchar("ip_address", { length: 50 }),
   user_agent: text("user_agent"),
   created_at: timestamp("created_at").defaultNow(),
@@ -745,15 +773,12 @@ export const userTwoFactor = pgTable("user_2fa", {
   user_id: integer("user_id").notNull().unique(),
   secret: varchar("secret", { length: 255 }).notNull(),
   enabled: integer("enabled").default(0).notNull(),
-  // 0 = setup en cours, 1 = actif
   backup_codes: text("backup_codes"),
-  // JSON array de codes hashés bcrypt
   enabled_at: timestamp("enabled_at"),
   last_used_at: timestamp("last_used_at"),
   created_at: timestamp("created_at").defaultNow(),
   updated_at: timestamp("updated_at").defaultNow(),
 });
-
 
 // ========================
 // USER BLOCKS / RESTRICTS
@@ -763,6 +788,5 @@ export const userBlocks = pgTable("user_blocks", {
   blocker_id: integer("blocker_id").notNull(),
   blocked_id: integer("blocked_id").notNull(),
   type: varchar("type", { length: 20 }).notNull().default("block"),
-  // "block" = invisible total, "restrict" = voit mais ne peut pas interagir
   created_at: timestamp("created_at").defaultNow(),
 });

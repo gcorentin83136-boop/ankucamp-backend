@@ -26,6 +26,7 @@ import {
   shareEvent,
   shareArticle,
   toggleEventLike,
+  shareReelToFeed, // 🆕
 } from "./posts.service";
 
 // ============================================================
@@ -252,7 +253,7 @@ export async function likeEvent(req: AuthRequest, res: Response) {
 }
 
 // ============================================================
-// PARTAGER UN ARTICLE (POST /posts/share-article/:articleId)
+// PARTAGER UN ARTICLE
 // ============================================================
 export async function shareArticleCtrl(
   req: AuthRequest,
@@ -272,5 +273,22 @@ export async function shareArticleCtrl(
   }
 
   const post = await shareArticle(articleId, req.user.id, parsed.data);
+  return res.status(201).json({ success: true, post });
+}
+
+// ============================================================
+// PARTAGER UN REEL (ANKU LIVE)
+// ============================================================
+export async function shareReelCtrl(req: AuthRequest, res: Response) {
+  if (!req.user) throw new AppError("Non authentifié", 401);
+
+  const reelId = parseId(req.params.reelId);
+
+  const parsed = shareEventSchema.safeParse(req.body);
+  if (!parsed.success) {
+    throw new AppError("Données invalides", 400, parsed.error.flatten().fieldErrors);
+  }
+
+  const post = await shareReelToFeed(reelId, req.user.id, parsed.data);
   return res.status(201).json({ success: true, post });
 }
