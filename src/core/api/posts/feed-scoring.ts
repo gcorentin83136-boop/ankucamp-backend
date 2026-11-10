@@ -16,7 +16,7 @@ export interface FeedCandidate {
   id: number; author_id: number; content: string | null; media_urls: string | null;
   visibility: string; shared_from_post_id: number | null; shared_event_id: number | null;
   shared_article_id: number | null; share_comment: string | null; likes_count: number; 
-  comments_count: number; shares_count: number; created_at: Date; updated_at: Date;
+  comments_count: number; shares_count: number; created_at: Date | null; updated_at: Date | null;
 }
 
 export interface UserContext {
@@ -26,11 +26,12 @@ export interface UserContext {
 }
 
 export function calculateFeedScore(post: FeedCandidate, ctx: UserContext, now: Date = new Date()) {
-  const ageMs = Math.max(0, now.getTime() - new Date(post.created_at).getTime());
+  const postDate = post.created_at ? new Date(post.created_at) : new Date();
+  const ageMs = Math.max(0, now.getTime() - postDate.getTime());
   const ageHours = ageMs / (1000 * 60 * 60);
 
   const recency = Math.exp(-ageHours / FEED_CONFIG.recencyHalfLifeHours);
-  const rawEngagement = post.likes_count + 2 * post.comments_count + 3 * post.shares_count;
+  const rawEngagement = (post.likes_count || 0) + 2 * (post.comments_count || 0) + 3 * (post.shares_count || 0);
   const engagement = Math.log(1 + rawEngagement) / Math.log(1 + FEED_CONFIG.engagementCap);
 
   let affinity = 0;

@@ -6,7 +6,7 @@ import * as storiesService from "./stories.service";
 export async function getFeed(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifié", 401);
   const stories = await storiesService.getStoriesFeed(req.user.id);
-  return res.json({ success: true, stories }); // Note: on renvoie "stories" et non plus "reels"
+  return res.json({ success: true, stories });
 }
 
 export async function create(req: AuthRequest, res: Response) {
@@ -20,6 +20,7 @@ export async function remove(req: AuthRequest, res: Response) {
   const result = await storiesService.deleteStory(Number(req.params.id), req.user.id);
   return res.json(result);
 }
+
 export async function updateVisibilityCtrl(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifié", 401);
   const story = await storiesService.updateVisibility(Number(req.params.id), req.user.id, req.body.visibility);

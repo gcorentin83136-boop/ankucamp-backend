@@ -1,9 +1,8 @@
 import { eq, and, desc, gt, or, inArray } from "drizzle-orm";
 import { db } from "../../db";
-import { stories, users, friendships } from "../../db/schema"; // 🆕 Ajout de friendships
+import { stories, users, friendships } from "../../db/schema";
 import { AppError } from "../../errors/AppError";
 
-// 🆕 Helper pour récupérer les amis
 async function getFriendIds(userId: number): Promise<number[]> {
   const rows = await db
     .select({
@@ -34,6 +33,7 @@ export async function createStory(authorId: number, input: any) {
     caption: input.caption,
     visibility: input.visibility || "public",
     expires_at: input.expires_at ? new Date(input.expires_at) : new Date(Date.now() + 48 * 60 * 60 * 1000),
+    elements: input.elements || null, // 🆕
   }).returning();
   
   return enrichStory(created, authorId);
@@ -42,13 +42,11 @@ export async function createStory(authorId: number, input: any) {
 export async function getStoriesFeed(viewerId: number) {
   const friendIds = await getFriendIds(viewerId);
 
-  // 🆕 Logique de visibilité
   const visibilityConditions: any[] = [
     eq(stories.visibility, "public"),
-    eq(stories.author_id, viewerId) // On voit toujours ses propres stories
+    eq(stories.author_id, viewerId)
   ];
 
-  // Si on a des amis, on ajoute la condition pour voir leurs stories "amis"
   if (friendIds.length > 0) {
     visibilityConditions.push(
       and(eq(stories.visibility, "friends"), inArray(stories.author_id, friendIds))
@@ -59,8 +57,8 @@ export async function getStoriesFeed(viewerId: number) {
     .from(stories)
     .where(
       and(
-        gt(stories.expires_at, new Date()), // Pas expiré
-        or(...visibilityConditions)         // 🆕 Respecte la visibilité
+        gt(stories.expires_at, new Date()),
+        or(...visibilityConditions)
       )
     )
     .orderBy(desc(stories.created_at));

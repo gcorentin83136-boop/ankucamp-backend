@@ -423,6 +423,7 @@ export const stories = pgTable("stories", {
   caption: text("caption"),
   visibility: varchar("visibility", { length: 20 }).default("public").notNull(),
   expires_at: timestamp("expires_at").notNull(), // Date d'expiration (48h)
+  elements: text("elements"), // 🆕 Sauvegarde du texte, emoji, couleurs en JSON
   created_at: timestamp("created_at").defaultNow(),
 });
 

@@ -14,52 +14,22 @@ import type {
   CreatePostInput, UpdatePostInput, CreateCommentInput, SharePostInput, ShareEventInput, ListPostsQuery,
 } from "./posts.validation";
 
-// ============================================================
-// HELPERS PRIVÉS
-// ============================================================
-
 async function getFriendIds(userId: number): Promise<number[]> {
-  const rows = await db
-    .select({ requester_id: friendships.requester_id, receiver_id: friendships.receiver_id })
+  const rows = await db.select({ requester_id: friendships.requester_id, receiver_id: friendships.receiver_id })
     .from(friendships)
-    .where(
-      and(
-        or(eq(friendships.requester_id, userId), eq(friendships.receiver_id, userId)),
-        eq(friendships.status, "accepted")
-      )
-    );
+    .where(and(or(eq(friendships.requester_id, userId), eq(friendships.receiver_id, userId)), eq(friendships.status, "accepted")));
   return rows.map((r) => (r.requester_id === userId ? r.receiver_id : r.requester_id));
 }
 
 async function areFriends(userA: number, userB: number): Promise<boolean> {
-  const [row] = await db
-    .select({ id: friendships.id })
-    .from(friendships)
-    .where(
-      and(
-        or(
-          and(eq(friendships.requester_id, userA), eq(friendships.receiver_id, userB)),
-          and(eq(friendships.requester_id, userB), eq(friendships.receiver_id, userA))
-        ),
-        eq(friendships.status, "accepted")
-      )
-    )
-    .limit(1);
+  const [row] = await db.select({ id: friendships.id }).from(friendships)
+    .where(and(or(and(eq(friendships.requester_id, userA), eq(friendships.receiver_id, userB)), and(eq(friendships.requester_id, userB), eq(friendships.receiver_id, userA))), eq(friendships.status, "accepted"))).limit(1);
   return !!row;
 }
 
 async function enrichEventForPost(event: any) {
-  const [organizer] = await db
-    .select({ id: users.id, first_name: users.first_name, last_name: users.last_name, username: users.username, avatar_url: users.avatar_url })
-    .from(users)
-    .where(eq(users.id, event.organizer_id))
-    .limit(1);
-
-  const [likesCount] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(eventLikes)
-    .where(eq(eventLikes.event_id, event.id));
-
+  const [organizer] = await db.select({ id: users.id, first_name: users.first_name, last_name: users.last_name, username: users.username, avatar_url: users.avatar_url }).from(users).where(eq(users.id, event.organizer_id)).limit(1);
+  const [likesCount] = await db.select({ count: sql<number>`count(*)::int` }).from(eventLikes).where(eq(eventLikes.event_id, event.id));
   return {
     ...event,
     latitude: event.latitude !== null ? Number(event.latitude) : null,
@@ -71,30 +41,16 @@ async function enrichEventForPost(event: any) {
   };
 }
 
-async function enrichPost(
-  post: any,
-  viewerId?: number,
-  badgesMap?: Map<number, string[]>,
-  likedPostIds?: Set<number>
-): Promise<any> {
-  const [author] = await db
-    .select({
-      id: users.id, first_name: users.first_name, last_name: users.last_name,
-      username: users.username, avatar_url: users.avatar_url, verification_status: users.verification_status,
-    })
-    .from(users)
-    .where(eq(users.id, post.author_id))
-    .limit(1);
+async function enrichPost(post: any, viewerId?: number, badgesMap?: Map<number, string[]>, likedPostIds?: Set<number>): Promise<any> {
+  const [author] = await db.select({ id: users.id, first_name: users.first_name, last_name: users.last_name, username: users.username, avatar_url: users.avatar_url, verification_status: users.verification_status }).from(users).where(eq(users.id, post.author_id)).limit(1);
 
   const authorBadges = badgesMap ? badgesMap.get(post.author_id) ?? [] : await getUserBadges(post.author_id);
 
   let likedByMe = false;
   if (viewerId) {
-    if (likedPostIds) {
-      likedByMe = likedPostIds.has(post.id);
-    } else {
-      const [like] = await db.select({ id: postLikes.id }).from(postLikes)
-        .where(and(eq(postLikes.post_id, post.id), eq(postLikes.user_id, viewerId))).limit(1);
+    if (likedPostIds) likedByMe = likedPostIds.has(post.id);
+    else {
+      const [like] = await db.select({ id: postLikes.id }).from(postLikes).where(and(eq(postLikes.post_id, post.id), eq(postLikes.user_id, viewerId))).limit(1);
       likedByMe = !!like;
     }
   }
@@ -105,7 +61,9 @@ async function enrichPost(
     if (original) {
       const [originalAuthor] = await db.select({ id: users.id, first_name: users.first_name, last_name: users.last_name, username: users.username, avatar_url: users.avatar_url, verification_status: users.verification_status }).from(users).where(eq(users.id, original.author_id)).limit(1);
       const originalBadges = badgesMap?.get(original.author_id) ?? (await getUserBadges(original.author_id));
-      sharedFrom = { ...original, media_urls: original.media_urls ? JSON.parse(original.media_urls) : [], author: originalAuthor ? { ...originalAuthor, badges: originalBadges } : null };
+      let originalMedia: any[] = [];
+      try { if (original.media_urls) originalMedia = JSON.parse(original.media_urls); } catch (e) {}
+      sharedFrom = { ...original, media_urls: originalMedia, author: originalAuthor ? { ...originalAuthor, badges: originalBadges } : null };
     }
   }
 
@@ -124,9 +82,12 @@ async function enrichPost(
     }
   }
 
+  let parsedMedia: any[] = [];
+  try { if (post.media_urls) parsedMedia = JSON.parse(post.media_urls); } catch (e) {}
+
   return {
     ...post,
-    media_urls: post.media_urls ? JSON.parse(post.media_urls) : [],
+    media_urls: parsedMedia,
     author: author ? { ...author, badges: authorBadges } : null,
     liked_by_me: likedByMe,
     shared_from: sharedFrom,
@@ -135,30 +96,19 @@ async function enrichPost(
   };
 }
 
-// ============================================================
-// CRÉATION & LECTURE
-// ============================================================
-
 export async function createPost(authorId: number, input: CreatePostInput) {
   const { content, media_urls, visibility } = input;
-  if ((!content || content.trim() === "") && (!media_urls || media_urls.length === 0)) {
-    throw new AppError("Un post doit avoir du texte ou au moins un média", 400);
-  }
+  if ((!content || content.trim() === "") && (!media_urls || media_urls.length === 0)) throw new AppError("Un post doit avoir du texte ou au moins un média", 400);
 
   const [created] = await db.insert(posts).values({
-    author_id: authorId,
-    content: content ?? null,
-    media_urls: media_urls && media_urls.length > 0 ? JSON.stringify(media_urls) : null,
-    visibility,
+    author_id: authorId, content: content ?? null, media_urls: media_urls && media_urls.length > 0 ? JSON.stringify(media_urls) : null, visibility,
   }).returning();
 
   if (visibility !== "private") {
     try {
       const [author] = await db.select({ first_name: users.first_name, last_name: users.last_name }).from(users).where(eq(users.id, authorId)).limit(1);
       const friendIds = await getFriendIds(authorId);
-      if (friendIds.length > 0 && author) {
-        notifyFriendsNewPost(friendIds, created.id, `${author.first_name} ${author.last_name}`.trim(), content ?? "", authorId).catch((err) => console.error("❌ Erreur notif post amis:", err));
-      }
+      if (friendIds.length > 0 && author) notifyFriendsNewPost(friendIds, created.id, `${author.first_name} ${author.last_name}`.trim(), content ?? "", authorId).catch((err) => console.error("❌ Erreur notif post amis:", err));
     } catch (err) { console.error("❌ Erreur préparation notif post amis:", err); }
   }
   return enrichPost(created, authorId);
@@ -177,10 +127,7 @@ export async function getPostById(postId: number, viewerId?: number) {
 
 export async function getFeed(viewerId: number, query: ListPostsQuery) {
   const { limit, cursor } = query;
-
-  const [friendIds, hiddenIds, interactionCounts] = await Promise.all([
-    getFriendIds(viewerId), getHiddenUserIds(viewerId), getInteractionCounts(viewerId),
-  ]);
+  const [friendIds, hiddenIds, interactionCounts] = await Promise.all([getFriendIds(viewerId), getHiddenUserIds(viewerId), getInteractionCounts(viewerId)]);
 
   const conditions: any[] = [eq(posts.visibility, "public")];
   if (friendIds.length > 0) conditions.push(and(eq(posts.visibility, "friends"), inArray(posts.author_id, friendIds)));
@@ -294,10 +241,8 @@ export async function toggleLike(postId: number, userId: number) {
 
 export async function getLikes(postId: number, query: ListPostsQuery) {
   const { limit, offset } = query;
-  const rows = await db
-    .select({ id: postLikes.id, user_id: postLikes.user_id, first_name: users.first_name, last_name: users.last_name, username: users.username, avatar_url: users.avatar_url, verification_status: users.verification_status, created_at: postLikes.created_at })
-    .from(postLikes).leftJoin(users, eq(users.id, postLikes.user_id))
-    .where(eq(postLikes.post_id, postId)).orderBy(desc(postLikes.created_at)).limit(limit).offset(offset);
+  const rows = await db.select({ id: postLikes.id, user_id: postLikes.user_id, first_name: users.first_name, last_name: users.last_name, username: users.username, avatar_url: users.avatar_url, verification_status: users.verification_status, created_at: postLikes.created_at })
+    .from(postLikes).leftJoin(users, eq(users.id, postLikes.user_id)).where(eq(postLikes.post_id, postId)).orderBy(desc(postLikes.created_at)).limit(limit).offset(offset);
   const badgesMap = await getBadgesForUsers(rows.map((r) => r.user_id));
   return rows.map((r) => ({ ...r, badges: badgesMap.get(r.user_id) ?? [] }));
 }
@@ -336,8 +281,7 @@ export async function getComments(postId: number, query: ListPostsQuery, viewerI
   const { limit, offset } = query;
   const hiddenIds = viewerId ? await getHiddenUserIds(viewerId) : [];
 
-  const all = await db
-    .select({
+  const all = await db.select({
       id: postComments.id, post_id: postComments.post_id, author_id: postComments.author_id, content: postComments.content, parent_comment_id: postComments.parent_comment_id, media_url: postComments.media_url, created_at: postComments.created_at,
       author_first_name: users.first_name, author_last_name: users.last_name, author_username: users.username, author_avatar_url: users.avatar_url, author_verification_status: users.verification_status,
     })
