@@ -364,7 +364,6 @@ export const posts = pgTable("posts", {
   shared_event_id: integer("shared_event_id"),
   shared_product_id: integer("shared_product_id"),
   shared_article_id: integer("shared_article_id"),
-  shared_reel_id: integer("shared_reel_id"), // 🆕 Ajouté
   share_comment: text("share_comment"),
   likes_count: integer("likes_count").default(0).notNull(),
   comments_count: integer("comments_count").default(0).notNull(),
@@ -414,38 +413,16 @@ export const follows = pgTable("follows", {
 });
 
 // ============================================================
-// ANKU LIVE (REELS) 🆕
+// STORIES ANKU (Remplace les Reels)
 // ============================================================
-
-export const reels = pgTable("reels", {
+export const stories = pgTable("stories", {
   id: serial("id").primaryKey(),
   author_id: integer("author_id").notNull(),
   media_url: text("media_url").notNull(),
   media_type: varchar("media_type", { length: 20 }).default("video").notNull(), // 'video' | 'image'
-  thumbnail_url: text("thumbnail_url"),
   caption: text("caption"),
   visibility: varchar("visibility", { length: 20 }).default("public").notNull(),
-  shared_event_id: integer("shared_event_id"),
-  shared_article_id: integer("shared_article_id"),
-  shared_post_id: integer("shared_post_id"),
-  likes_count: integer("likes_count").default(0).notNull(),
-  comments_count: integer("comments_count").default(0).notNull(),
-  shares_count: integer("shares_count").default(0).notNull(),
-  created_at: timestamp("created_at").defaultNow(),
-});
-
-export const reelLikes = pgTable("reel_likes", {
-  id: serial("id").primaryKey(),
-  reel_id: integer("reel_id").notNull(),
-  user_id: integer("user_id").notNull(),
-  created_at: timestamp("created_at").defaultNow(),
-});
-
-export const reelComments = pgTable("reel_comments", {
-  id: serial("id").primaryKey(),
-  reel_id: integer("reel_id").notNull(),
-  author_id: integer("author_id").notNull(),
-  content: text("content").notNull(),
+  expires_at: timestamp("expires_at").notNull(), // Date d'expiration (48h)
   created_at: timestamp("created_at").defaultNow(),
 });
 
@@ -548,9 +525,6 @@ export const accountDeletionRequests = pgTable("account_deletion_requests", {
   created_at: timestamp("created_at").defaultNow(),
 });
 
-// ========================
-// CONTENT REPORTS
-// ========================
 export const contentReports = pgTable("content_reports", {
   id: serial("id").primaryKey(),
   reporter_id: integer("reporter_id").notNull(),
@@ -566,9 +540,6 @@ export const contentReports = pgTable("content_reports", {
   created_at: timestamp("created_at").defaultNow(),
 });
 
-// ========================
-// EVENTS
-// ========================
 export const events = pgTable("events", {
   id: serial("id").primaryKey(),
   organizer_id: integer("organizer_id").notNull(),
@@ -592,9 +563,6 @@ export const events = pgTable("events", {
   updated_at: timestamp("updated_at").defaultNow(),
 });
 
-// ========================
-// EVENT REGISTRATIONS
-// ========================
 export const eventRegistrations = pgTable("event_registrations", {
   id: serial("id").primaryKey(),
   event_id: integer("event_id").notNull(),
@@ -603,9 +571,6 @@ export const eventRegistrations = pgTable("event_registrations", {
   created_at: timestamp("created_at").defaultNow(),
 });
 
-// ========================
-// EVENT LIKES (toggle like sur événement)
-// ========================
 export const eventLikes = pgTable("event_likes", {
   id: serial("id").primaryKey(),
   event_id: integer("event_id").notNull(),
@@ -613,9 +578,6 @@ export const eventLikes = pgTable("event_likes", {
   created_at: timestamp("created_at").defaultNow(),
 });
 
-// ========================
-// EVENT COMMENTS
-// ========================
 export const eventComments = pgTable("event_comments", {
   id: serial("id").primaryKey(),
   event_id: integer("event_id").notNull(),
@@ -627,9 +589,6 @@ export const eventComments = pgTable("event_comments", {
   updated_at: timestamp("updated_at").defaultNow(),
 });
 
-// ========================
-// EVENT COMMENT REACTIONS (emoji)
-// ========================
 export const eventCommentReactions = pgTable("event_comment_reactions", {
   id: serial("id").primaryKey(),
   comment_id: integer("comment_id").notNull(),
@@ -638,9 +597,6 @@ export const eventCommentReactions = pgTable("event_comment_reactions", {
   created_at: timestamp("created_at").defaultNow(),
 });
 
-// ========================
-// ARTICLES
-// ========================
 export const articles = pgTable("articles", {
   id: serial("id").primaryKey(),
   author_id: integer("author_id").notNull(),
@@ -660,9 +616,6 @@ export const articles = pgTable("articles", {
   visibility: varchar("visibility", { length: 20 }).default("public").notNull(),
 });
 
-// ========================
-// ARTICLE LIKES
-// ========================
 export const articleLikes = pgTable("article_likes", {
   id: serial("id").primaryKey(),
   article_id: integer("article_id").notNull(),
@@ -670,9 +623,6 @@ export const articleLikes = pgTable("article_likes", {
   created_at: timestamp("created_at").defaultNow(),
 });
 
-// ========================
-// ARTICLE COMMENTS (avec réponses imbriquées + media)
-// ========================
 export const articleComments = pgTable("article_comments", {
   id: serial("id").primaryKey(),
   article_id: integer("article_id").notNull(),
@@ -684,9 +634,6 @@ export const articleComments = pgTable("article_comments", {
   updated_at: timestamp("updated_at").defaultNow(),
 });
 
-// ========================
-// ARTICLE COMMENT REACTIONS (emoji)
-// ========================
 export const articleCommentReactions = pgTable("article_comment_reactions", {
   id: serial("id").primaryKey(),
   comment_id: integer("comment_id").notNull(),
@@ -695,9 +642,6 @@ export const articleCommentReactions = pgTable("article_comment_reactions", {
   created_at: timestamp("created_at").defaultNow(),
 });
 
-// ========================
-// CARTS (panier)
-// ========================
 export const carts = pgTable("carts", {
   id: serial("id").primaryKey(),
   user_id: integer("user_id").notNull(),
@@ -707,9 +651,6 @@ export const carts = pgTable("carts", {
   updated_at: timestamp("updated_at").defaultNow(),
 });
 
-// ========================
-// WISHLISTS (favoris produits)
-// ========================
 export const wishlists = pgTable("wishlists", {
   id: serial("id").primaryKey(),
   user_id: integer("user_id").notNull(),
@@ -717,9 +658,6 @@ export const wishlists = pgTable("wishlists", {
   created_at: timestamp("created_at").defaultNow(),
 });
 
-// ========================
-// PROMO CODES (codes de reduction)
-// ========================
 export const promoCodes = pgTable("promo_codes", {
   id: serial("id").primaryKey(),
   code: varchar("code", { length: 50 }).notNull().unique(),
@@ -738,9 +676,6 @@ export const promoCodes = pgTable("promo_codes", {
   created_at: timestamp("created_at").defaultNow(),
 });
 
-// ========================
-// PROMO USES (utilisations)
-// ========================
 export const promoUses = pgTable("promo_uses", {
   id: serial("id").primaryKey(),
   promo_id: integer("promo_id").notNull(),
@@ -749,9 +684,6 @@ export const promoUses = pgTable("promo_uses", {
   used_at: timestamp("used_at").defaultNow(),
 });
 
-// ========================
-// AUDIT LOGS (traçabilité admin)
-// ========================
 export const auditLogs = pgTable("audit_logs", {
   id: serial("id").primaryKey(),
   admin_id: integer("admin_id").notNull(),
@@ -765,9 +697,6 @@ export const auditLogs = pgTable("audit_logs", {
   created_at: timestamp("created_at").defaultNow(),
 });
 
-// ========================
-// USER 2FA (TOTP)
-// ========================
 export const userTwoFactor = pgTable("user_2fa", {
   id: serial("id").primaryKey(),
   user_id: integer("user_id").notNull().unique(),
@@ -780,9 +709,6 @@ export const userTwoFactor = pgTable("user_2fa", {
   updated_at: timestamp("updated_at").defaultNow(),
 });
 
-// ========================
-// USER BLOCKS / RESTRICTS
-// ========================
 export const userBlocks = pgTable("user_blocks", {
   id: serial("id").primaryKey(),
   blocker_id: integer("blocker_id").notNull(),

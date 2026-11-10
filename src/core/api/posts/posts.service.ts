@@ -1,34 +1,17 @@
-import { eq, and, desc, or, inArray, notInArray, sql, gte } from "drizzle-orm";
+import { eq, and, desc, or, inArray, notInArray, sql, gte, lt } from "drizzle-orm";
 import { db } from "../../db";
 import {
-  posts,
-  postLikes,
-  postComments,
-  postShares,
-  users,
-  friendships,
-  events,
-  eventLikes,
-  articles,
-  reels, // 🆕
+  posts, postLikes, postComments, postShares, users, friendships, events, eventLikes, articles,
 } from "../../db/schema";
 import { AppError } from "../../errors/AppError";
 import { getHiddenUserIds, assertCanInteract } from "../users/blocks.service";
 import {
-  notifyFriendsNewPost,
-  notifyPostLiked,
-  notifyPostCommented,
-  notifyCommentReplied,
-  notifyEventLiked,
+  notifyFriendsNewPost, notifyPostLiked, notifyPostCommented, notifyCommentReplied, notifyEventLiked,
 } from "../../notifications/social-notifications.helper";
 import { getBadgesForUsers, getUserBadges } from "../badges/badges.service";
+import { calculateFeedScore, getInteractionCounts, FEED_CONFIG, type FeedCandidate, type UserContext } from "./feed-scoring";
 import type {
-  CreatePostInput,
-  UpdatePostInput,
-  CreateCommentInput,
-  SharePostInput,
-  ShareEventInput,
-  ListPostsQuery,
+  CreatePostInput, UpdatePostInput, CreateCommentInput, SharePostInput, ShareEventInput, ListPostsQuery,
 } from "./posts.validation";
 
 // ============================================================
@@ -37,24 +20,15 @@ import type {
 
 async function getFriendIds(userId: number): Promise<number[]> {
   const rows = await db
-    .select({
-      requester_id: friendships.requester_id,
-      receiver_id: friendships.receiver_id,
-    })
+    .select({ requester_id: friendships.requester_id, receiver_id: friendships.receiver_id })
     .from(friendships)
     .where(
       and(
-        or(
-          eq(friendships.requester_id, userId),
-          eq(friendships.receiver_id, userId)
-        ),
+        or(eq(friendships.requester_id, userId), eq(friendships.receiver_id, userId)),
         eq(friendships.status, "accepted")
       )
     );
-
-  return rows.map((r) =>
-    r.requester_id === userId ? r.receiver_id : r.requester_id
-  );
+  return rows.map((r) => (r.requester_id === userId ? r.receiver_id : r.requester_id));
 }
 
 async function areFriends(userA: number, userB: number): Promise<boolean> {
@@ -64,32 +38,19 @@ async function areFriends(userA: number, userB: number): Promise<boolean> {
     .where(
       and(
         or(
-          and(
-            eq(friendships.requester_id, userA),
-            eq(friendships.receiver_id, userB)
-          ),
-          and(
-            eq(friendships.requester_id, userB),
-            eq(friendships.receiver_id, userA)
-          )
+          and(eq(friendships.requester_id, userA), eq(friendships.receiver_id, userB)),
+          and(eq(friendships.requester_id, userB), eq(friendships.receiver_id, userA))
         ),
         eq(friendships.status, "accepted")
       )
     )
     .limit(1);
-
   return !!row;
 }
 
 async function enrichEventForPost(event: any) {
   const [organizer] = await db
-    .select({
-      id: users.id,
-      first_name: users.first_name,
-      last_name: users.last_name,
-      username: users.username,
-      avatar_url: users.avatar_url,
-    })
+    .select({ id: users.id, first_name: users.first_name, last_name: users.last_name, username: users.username, avatar_url: users.avatar_url })
     .from(users)
     .where(eq(users.id, event.organizer_id))
     .limit(1);
@@ -113,140 +74,53 @@ async function enrichEventForPost(event: any) {
 async function enrichPost(
   post: any,
   viewerId?: number,
-  badgesMap?: Map<number, string[]>
+  badgesMap?: Map<number, string[]>,
+  likedPostIds?: Set<number>
 ): Promise<any> {
   const [author] = await db
     .select({
-      id: users.id,
-      first_name: users.first_name,
-      last_name: users.last_name,
-      username: users.username,
-      avatar_url: users.avatar_url,
-      verification_status: users.verification_status,
+      id: users.id, first_name: users.first_name, last_name: users.last_name,
+      username: users.username, avatar_url: users.avatar_url, verification_status: users.verification_status,
     })
     .from(users)
     .where(eq(users.id, post.author_id))
     .limit(1);
 
-  const authorBadges = badgesMap
-    ? badgesMap.get(post.author_id) ?? []
-    : await getUserBadges(post.author_id);
+  const authorBadges = badgesMap ? badgesMap.get(post.author_id) ?? [] : await getUserBadges(post.author_id);
 
   let likedByMe = false;
   if (viewerId) {
-    const [like] = await db
-      .select({ id: postLikes.id })
-      .from(postLikes)
-      .where(
-        and(eq(postLikes.post_id, post.id), eq(postLikes.user_id, viewerId))
-      )
-      .limit(1);
-    likedByMe = !!like;
+    if (likedPostIds) {
+      likedByMe = likedPostIds.has(post.id);
+    } else {
+      const [like] = await db.select({ id: postLikes.id }).from(postLikes)
+        .where(and(eq(postLikes.post_id, post.id), eq(postLikes.user_id, viewerId))).limit(1);
+      likedByMe = !!like;
+    }
   }
 
   let sharedFrom: any = null;
   if (post.shared_from_post_id) {
-    const [original] = await db
-      .select()
-      .from(posts)
-      .where(eq(posts.id, post.shared_from_post_id))
-      .limit(1);
-
+    const [original] = await db.select().from(posts).where(eq(posts.id, post.shared_from_post_id)).limit(1);
     if (original) {
-      const [originalAuthor] = await db
-        .select({
-          id: users.id,
-          first_name: users.first_name,
-          last_name: users.last_name,
-          username: users.username,
-          avatar_url: users.avatar_url,
-          verification_status: users.verification_status,
-        })
-        .from(users)
-        .where(eq(users.id, original.author_id))
-        .limit(1);
-
-      const originalBadges =
-        badgesMap?.get(original.author_id) ??
-        (await getUserBadges(original.author_id));
-
-      sharedFrom = {
-        ...original,
-        media_urls: original.media_urls ? JSON.parse(original.media_urls) : [],
-        author: originalAuthor
-          ? { ...originalAuthor, badges: originalBadges }
-          : null,
-      };
+      const [originalAuthor] = await db.select({ id: users.id, first_name: users.first_name, last_name: users.last_name, username: users.username, avatar_url: users.avatar_url, verification_status: users.verification_status }).from(users).where(eq(users.id, original.author_id)).limit(1);
+      const originalBadges = badgesMap?.get(original.author_id) ?? (await getUserBadges(original.author_id));
+      sharedFrom = { ...original, media_urls: original.media_urls ? JSON.parse(original.media_urls) : [], author: originalAuthor ? { ...originalAuthor, badges: originalBadges } : null };
     }
   }
 
   let sharedEvent: any = null;
   if (post.shared_event_id) {
-    const [ev] = await db
-      .select()
-      .from(events)
-      .where(eq(events.id, post.shared_event_id))
-      .limit(1);
-
-    if (ev) {
-      sharedEvent = await enrichEventForPost(ev);
-    }
+    const [ev] = await db.select().from(events).where(eq(events.id, post.shared_event_id)).limit(1);
+    if (ev) sharedEvent = await enrichEventForPost(ev);
   }
 
   let sharedArticle: any = null;
   if (post.shared_article_id) {
-    const [art] = await db
-      .select()
-      .from(articles)
-      .where(eq(articles.id, post.shared_article_id))
-      .limit(1);
-
+    const [art] = await db.select().from(articles).where(eq(articles.id, post.shared_article_id)).limit(1);
     if (art) {
-      const [artAuthor] = await db
-        .select({
-          id: users.id,
-          first_name: users.first_name,
-          last_name: users.last_name,
-          username: users.username,
-          avatar_url: users.avatar_url,
-        })
-        .from(users)
-        .where(eq(users.id, art.author_id))
-        .limit(1);
-
-      sharedArticle = {
-        ...art,
-        author: artAuthor,
-      };
-    }
-  }
-
-  // 🆕 RÉCUPÉRATION DU REEL PARTAGÉ
-  let sharedReel: any = null;
-  if (post.shared_reel_id) {
-    const [r] = await db
-      .select()
-      .from(reels)
-      .where(eq(reels.id, post.shared_reel_id))
-      .limit(1);
-
-    if (r) {
-      const [rAuthor] = await db
-        .select({
-          id: users.id,
-          first_name: users.first_name,
-          last_name: users.last_name,
-          username: users.username,
-          avatar_url: users.avatar_url,
-        })
-        .from(users)
-        .where(eq(users.id, r.author_id))
-        .limit(1);
-
-      sharedReel = {
-        ...r,
-        author: rAuthor,
-      };
+      const [artAuthor] = await db.select({ id: users.id, first_name: users.first_name, last_name: users.last_name, username: users.username, avatar_url: users.avatar_url }).from(users).where(eq(users.id, art.author_id)).limit(1);
+      sharedArticle = { ...art, author: artAuthor };
     }
   }
 
@@ -258,265 +132,138 @@ async function enrichPost(
     shared_from: sharedFrom,
     shared_event: sharedEvent,
     shared_article: sharedArticle,
-    shared_reel: sharedReel, // 🆕
   };
 }
 
 // ============================================================
-// CRÉATION
+// CRÉATION & LECTURE
 // ============================================================
 
 export async function createPost(authorId: number, input: CreatePostInput) {
   const { content, media_urls, visibility } = input;
-
-  if (
-    (!content || content.trim() === "") &&
-    (!media_urls || media_urls.length === 0)
-  ) {
+  if ((!content || content.trim() === "") && (!media_urls || media_urls.length === 0)) {
     throw new AppError("Un post doit avoir du texte ou au moins un média", 400);
   }
 
-  const [created] = await db
-    .insert(posts)
-    .values({
-      author_id: authorId,
-      content: content ?? null,
-      media_urls:
-        media_urls && media_urls.length > 0
-          ? JSON.stringify(media_urls)
-          : null,
-      visibility,
-    })
-    .returning();
+  const [created] = await db.insert(posts).values({
+    author_id: authorId,
+    content: content ?? null,
+    media_urls: media_urls && media_urls.length > 0 ? JSON.stringify(media_urls) : null,
+    visibility,
+  }).returning();
 
   if (visibility !== "private") {
     try {
-      const [author] = await db
-        .select({ first_name: users.first_name, last_name: users.last_name })
-        .from(users)
-        .where(eq(users.id, authorId))
-        .limit(1);
-
+      const [author] = await db.select({ first_name: users.first_name, last_name: users.last_name }).from(users).where(eq(users.id, authorId)).limit(1);
       const friendIds = await getFriendIds(authorId);
       if (friendIds.length > 0 && author) {
-        const authorName = `${author.first_name} ${author.last_name}`.trim();
-        notifyFriendsNewPost(
-          friendIds,
-          created.id,
-          authorName,
-          content ?? "",
-          authorId
-        ).catch((err) =>
-          console.error("❌ Erreur notif post amis:", err)
-        );
+        notifyFriendsNewPost(friendIds, created.id, `${author.first_name} ${author.last_name}`.trim(), content ?? "", authorId).catch((err) => console.error("❌ Erreur notif post amis:", err));
       }
-    } catch (err) {
-      console.error("❌ Erreur préparation notif post amis:", err);
-    }
+    } catch (err) { console.error("❌ Erreur préparation notif post amis:", err); }
   }
-
   return enrichPost(created, authorId);
 }
 
-// ============================================================
-// LECTURE
-// ============================================================
-
 export async function getPostById(postId: number, viewerId?: number) {
-  const [post] = await db
-    .select()
-    .from(posts)
-    .where(eq(posts.id, postId))
-    .limit(1);
-
+  const [post] = await db.select().from(posts).where(eq(posts.id, postId)).limit(1);
   if (!post) throw new AppError("Post introuvable", 404);
-
-  if (post.visibility === "private" && post.author_id !== viewerId) {
-    throw new AppError("Tu n'as pas accès à ce post", 403);
-  }
-
+  if (post.visibility === "private" && post.author_id !== viewerId) throw new AppError("Tu n'as pas accès à ce post", 403);
   if (post.visibility === "friends" && viewerId && post.author_id !== viewerId) {
     const friends = await areFriends(viewerId, post.author_id);
-    if (!friends) {
-      throw new AppError("Tu n'as pas accès à ce post", 403);
-    }
+    if (!friends) throw new AppError("Tu n'as pas accès à ce post", 403);
   }
-
   return enrichPost(post, viewerId);
 }
 
 export async function getFeed(viewerId: number, query: ListPostsQuery) {
-  const { limit, offset } = query;
+  const { limit, cursor } = query;
 
-  const friendIds = await getFriendIds(viewerId);
-  const hiddenIds = await getHiddenUserIds(viewerId);
+  const [friendIds, hiddenIds, interactionCounts] = await Promise.all([
+    getFriendIds(viewerId), getHiddenUserIds(viewerId), getInteractionCounts(viewerId),
+  ]);
 
   const conditions: any[] = [eq(posts.visibility, "public")];
-
-  if (friendIds.length > 0) {
-    conditions.push(
-      and(eq(posts.visibility, "friends"), inArray(posts.author_id, friendIds))
-    );
-  }
-
+  if (friendIds.length > 0) conditions.push(and(eq(posts.visibility, "friends"), inArray(posts.author_id, friendIds)));
   conditions.push(eq(posts.author_id, viewerId));
 
   let whereClause: any = or(...conditions);
-  if (hiddenIds.length > 0) {
-    whereClause = and(whereClause, notInArray(posts.author_id, hiddenIds));
-  }
+  if (hiddenIds.length > 0) whereClause = and(whereClause, notInArray(posts.author_id, hiddenIds));
+  if (cursor) whereClause = and(whereClause, lt(posts.created_at, new Date(cursor)));
 
-  const rows = await db
-    .select()
-    .from(posts)
-    .where(whereClause)
-    .orderBy(desc(posts.created_at))
-    .limit(limit)
-    .offset(offset);
+  const poolSize = Math.min(FEED_CONFIG.poolCap, limit * FEED_CONFIG.poolMultiplier);
+  const candidates = await db.select().from(posts).where(whereClause).orderBy(desc(posts.created_at)).limit(poolSize);
 
-  const badgesMap = await getBadgesForUsers(rows.map((r) => r.author_id));
-  const postsResult = await Promise.all(
-    rows.map((p) => enrichPost(p, viewerId, badgesMap))
-  );
+  const ctx: UserContext = { viewerId, friendIds: new Set(friendIds), interactionCounts };
+  const scored = candidates.map((p) => ({ post: p as unknown as FeedCandidate, score: calculateFeedScore(p as unknown as FeedCandidate, ctx).total }));
+  scored.sort((a, b) => b.score - a.score);
+  const top = scored.slice(0, limit);
+
+  const topPostIds = top.map((s) => s.post.id);
+  const authorIds = top.map((s) => s.post.author_id);
+
+  const [badgesMap, likedRows] = await Promise.all([
+    getBadgesForUsers(authorIds),
+    topPostIds.length > 0 ? db.select({ post_id: postLikes.post_id }).from(postLikes).where(and(eq(postLikes.user_id, viewerId), inArray(postLikes.post_id, topPostIds))) : Promise.resolve([]),
+  ]);
+  const likedPostIds = new Set(likedRows.map((r) => r.post_id));
+
+  const postsResult = await Promise.all(top.map((s) => enrichPost(s.post, viewerId, badgesMap, likedPostIds)));
 
   let eventsFromFriends: any[] = [];
   if (friendIds.length > 0) {
-    const eventRows = await db
-      .select()
-      .from(events)
-      .where(
-        and(
-          inArray(events.organizer_id, friendIds),
-          eq(events.status, "published"),
-          gte(events.start_at, new Date())
-        )
-      )
-      .orderBy(events.start_at)
-      .limit(5);
-
-    eventsFromFriends = await Promise.all(
-      eventRows.map((ev) => enrichEventForPost(ev))
-    );
+    const eventRows = await db.select().from(events).where(and(inArray(events.organizer_id, friendIds), eq(events.status, "published"), gte(events.start_at, new Date()))).orderBy(events.start_at).limit(5);
+    eventsFromFriends = await Promise.all(eventRows.map((ev) => enrichEventForPost(ev)));
   }
 
-  return { posts: postsResult, events_from_friends: eventsFromFriends };
+  const nextCursor = candidates.length > 0 ? candidates[candidates.length - 1].created_at?.toISOString() ?? null : null;
+
+  return { posts: postsResult, events_from_friends: eventsFromFriends, next_cursor: nextCursor, has_more: candidates.length === poolSize };
 }
 
-export async function getUserPosts(
-  targetUserId: number,
-  viewerId: number,
-  query: ListPostsQuery
-) {
+export async function getUserPosts(targetUserId: number, viewerId: number, query: ListPostsQuery) {
   const { limit, offset } = query;
-
   if (targetUserId === viewerId) {
-    const rows = await db
-      .select()
-      .from(posts)
-      .where(eq(posts.author_id, viewerId))
-      .orderBy(desc(posts.created_at))
-      .limit(limit)
-      .offset(offset);
-
+    const rows = await db.select().from(posts).where(eq(posts.author_id, viewerId)).orderBy(desc(posts.created_at)).limit(limit).offset(offset);
     const badgesMap = await getBadgesForUsers(rows.map((r) => r.author_id));
     return Promise.all(rows.map((p) => enrichPost(p, viewerId, badgesMap)));
   }
-
-  const [target] = await db
-    .select({ id: users.id, is_private: users.is_private })
-    .from(users)
-    .where(eq(users.id, targetUserId))
-    .limit(1);
-
+  const [target] = await db.select({ id: users.id, is_private: users.is_private }).from(users).where(eq(users.id, targetUserId)).limit(1);
   if (!target) throw new AppError("Utilisateur introuvable", 404);
-
   const friends = await areFriends(viewerId, targetUserId);
+  if (target.is_private === 1 && !friends) throw new AppError("Ce profil est privé", 403);
 
-  if (target.is_private === 1 && !friends) {
-    throw new AppError("Ce profil est privé", 403);
-  }
+  const conditions: any[] = [and(eq(posts.author_id, targetUserId), eq(posts.visibility, "public"))];
+  if (friends) conditions.push(and(eq(posts.author_id, targetUserId), eq(posts.visibility, "friends")));
 
-  const conditions: any[] = [
-    and(eq(posts.author_id, targetUserId), eq(posts.visibility, "public")),
-  ];
-
-  if (friends) {
-    conditions.push(
-      and(eq(posts.author_id, targetUserId), eq(posts.visibility, "friends"))
-    );
-  }
-
-  const rows = await db
-    .select()
-    .from(posts)
-    .where(or(...conditions))
-    .orderBy(desc(posts.created_at))
-    .limit(limit)
-    .offset(offset);
-
+  const rows = await db.select().from(posts).where(or(...conditions)).orderBy(desc(posts.created_at)).limit(limit).offset(offset);
   const badgesMap = await getBadgesForUsers(rows.map((r) => r.author_id));
   return Promise.all(rows.map((p) => enrichPost(p, viewerId, badgesMap)));
 }
 
 export async function getMyPosts(authorId: number, query: ListPostsQuery) {
   const { limit, offset } = query;
-
-  const rows = await db
-    .select()
-    .from(posts)
-    .where(eq(posts.author_id, authorId))
-    .orderBy(desc(posts.created_at))
-    .limit(limit)
-    .offset(offset);
-
+  const rows = await db.select().from(posts).where(eq(posts.author_id, authorId)).orderBy(desc(posts.created_at)).limit(limit).offset(offset);
   const badgesMap = await getBadgesForUsers(rows.map((r) => r.author_id));
   return Promise.all(rows.map((p) => enrichPost(p, authorId, badgesMap)));
 }
 
-// ============================================================
-// MODIFICATION / SUPPRESSION
-// ============================================================
-
-export async function updatePost(
-  postId: number,
-  userId: number,
-  input: UpdatePostInput
-) {
-  const [post] = await db
-    .select()
-    .from(posts)
-    .where(eq(posts.id, postId))
-    .limit(1);
-
+export async function updatePost(postId: number, userId: number, input: UpdatePostInput) {
+  const [post] = await db.select().from(posts).where(eq(posts.id, postId)).limit(1);
   if (!post) throw new AppError("Post introuvable", 404);
-  if (post.author_id !== userId) {
-    throw new AppError("Tu ne peux modifier que tes propres posts", 403);
-  }
+  if (post.author_id !== userId) throw new AppError("Tu ne peux modifier que tes propres posts", 403);
 
   const updates: any = { updated_at: new Date() };
   if (input.content !== undefined) updates.content = input.content;
   if (input.visibility !== undefined) updates.visibility = input.visibility;
 
-  const [updated] = await db
-    .update(posts)
-    .set(updates)
-    .where(eq(posts.id, postId))
-    .returning();
-
+  const [updated] = await db.update(posts).set(updates).where(eq(posts.id, postId)).returning();
   return enrichPost(updated, userId);
 }
 
 export async function deletePost(postId: number, userId: number) {
-  const [post] = await db
-    .select()
-    .from(posts)
-    .where(eq(posts.id, postId))
-    .limit(1);
-
+  const [post] = await db.select().from(posts).where(eq(posts.id, postId)).limit(1);
   if (!post) throw new AppError("Post introuvable", 404);
-  if (post.author_id !== userId) {
-    throw new AppError("Tu ne peux supprimer que tes propres posts", 403);
-  }
+  if (post.author_id !== userId) throw new AppError("Tu ne peux supprimer que tes propres posts", 403);
 
   await db.delete(postLikes).where(eq(postLikes.post_id, postId));
   await db.delete(postComments).where(eq(postComments.post_id, postId));
@@ -524,467 +271,156 @@ export async function deletePost(postId: number, userId: number) {
   await db.delete(posts).where(eq(posts.id, postId));
 }
 
-// ============================================================
-// LIKES
-// ============================================================
-
 export async function toggleLike(postId: number, userId: number) {
-  const [post] = await db
-    .select()
-    .from(posts)
-    .where(eq(posts.id, postId))
-    .limit(1);
-
+  const [post] = await db.select().from(posts).where(eq(posts.id, postId)).limit(1);
   if (!post) throw new AppError("Post introuvable", 404);
-
   await assertCanInteract(userId, post.author_id, "liker ce post");
 
-  const [existing] = await db
-    .select()
-    .from(postLikes)
-    .where(and(eq(postLikes.post_id, postId), eq(postLikes.user_id, userId)))
-    .limit(1);
-
+  const [existing] = await db.select().from(postLikes).where(and(eq(postLikes.post_id, postId), eq(postLikes.user_id, userId))).limit(1);
   if (existing) {
     await db.delete(postLikes).where(eq(postLikes.id, existing.id));
-    await db
-      .update(posts)
-      .set({ likes_count: sql`GREATEST(${posts.likes_count} - 1, 0)` })
-      .where(eq(posts.id, postId));
-
+    await db.update(posts).set({ likes_count: sql`GREATEST(${posts.likes_count} - 1, 0)` }).where(eq(posts.id, postId));
     return { liked: false };
   } else {
     await db.insert(postLikes).values({ post_id: postId, user_id: userId });
-    await db
-      .update(posts)
-      .set({ likes_count: sql`${posts.likes_count} + 1` })
-      .where(eq(posts.id, postId));
-
+    await db.update(posts).set({ likes_count: sql`${posts.likes_count} + 1` }).where(eq(posts.id, postId));
     if (post.author_id !== userId) {
-      const [liker] = await db
-        .select({ first_name: users.first_name, last_name: users.last_name })
-        .from(users)
-        .where(eq(users.id, userId))
-        .limit(1);
-
-      if (liker) {
-        notifyPostLiked(
-          post.author_id,
-          postId,
-          `${liker.first_name} ${liker.last_name}`,
-          userId
-        ).catch((err) => console.error("❌ Erreur notif like:", err));
-      }
+      const [liker] = await db.select({ first_name: users.first_name, last_name: users.last_name }).from(users).where(eq(users.id, userId)).limit(1);
+      if (liker) notifyPostLiked(post.author_id, postId, `${liker.first_name} ${liker.last_name}`, userId).catch((err) => console.error("❌ Erreur notif like:", err));
     }
-
     return { liked: true };
   }
 }
 
 export async function getLikes(postId: number, query: ListPostsQuery) {
   const { limit, offset } = query;
-
   const rows = await db
-    .select({
-      id: postLikes.id,
-      user_id: postLikes.user_id,
-      first_name: users.first_name,
-      last_name: users.last_name,
-      username: users.username,
-      avatar_url: users.avatar_url,
-      verification_status: users.verification_status,
-      created_at: postLikes.created_at,
-    })
-    .from(postLikes)
-    .leftJoin(users, eq(users.id, postLikes.user_id))
-    .where(eq(postLikes.post_id, postId))
-    .orderBy(desc(postLikes.created_at))
-    .limit(limit)
-    .offset(offset);
-
+    .select({ id: postLikes.id, user_id: postLikes.user_id, first_name: users.first_name, last_name: users.last_name, username: users.username, avatar_url: users.avatar_url, verification_status: users.verification_status, created_at: postLikes.created_at })
+    .from(postLikes).leftJoin(users, eq(users.id, postLikes.user_id))
+    .where(eq(postLikes.post_id, postId)).orderBy(desc(postLikes.created_at)).limit(limit).offset(offset);
   const badgesMap = await getBadgesForUsers(rows.map((r) => r.user_id));
-  return rows.map((r) => ({
-    ...r,
-    badges: badgesMap.get(r.user_id) ?? [],
-  }));
+  return rows.map((r) => ({ ...r, badges: badgesMap.get(r.user_id) ?? [] }));
 }
 
-// ============================================================
-// COMMENTAIRES
-// ============================================================
-
-export async function addComment(
-  postId: number,
-  authorId: number,
-  input: CreateCommentInput
-) {
-  const [post] = await db
-    .select()
-    .from(posts)
-    .where(eq(posts.id, postId))
-    .limit(1);
-
+export async function addComment(postId: number, authorId: number, input: CreateCommentInput) {
+  const [post] = await db.select().from(posts).where(eq(posts.id, postId)).limit(1);
   if (!post) throw new AppError("Post introuvable", 404);
-
   await assertCanInteract(authorId, post.author_id, "commenter ce post");
 
   if (input.parent_comment_id) {
-    const [parent] = await db
-      .select()
-      .from(postComments)
-      .where(eq(postComments.id, input.parent_comment_id))
-      .limit(1);
-
-    if (!parent || parent.post_id !== postId) {
-      throw new AppError("Commentaire parent introuvable", 404);
-    }
+    const [parent] = await db.select().from(postComments).where(eq(postComments.id, input.parent_comment_id)).limit(1);
+    if (!parent || parent.post_id !== postId) throw new AppError("Commentaire parent introuvable", 404);
   }
 
-  const [created] = await db
-    .insert(postComments)
-    .values({
-      post_id: postId,
-      author_id: authorId,
-      content: input.content,
-      parent_comment_id: input.parent_comment_id ?? null,
-      media_url: input.media_url ?? null,
-    })
-    .returning();
+  const [created] = await db.insert(postComments).values({
+    post_id: postId, author_id: authorId, content: input.content, parent_comment_id: input.parent_comment_id ?? null, media_url: input.media_url ?? null,
+  }).returning();
 
-  await db
-    .update(posts)
-    .set({ comments_count: sql`${posts.comments_count} + 1` })
-    .where(eq(posts.id, postId));
+  await db.update(posts).set({ comments_count: sql`${posts.comments_count} + 1` }).where(eq(posts.id, postId));
 
   try {
-    const [commenter] = await db
-      .select({ first_name: users.first_name, last_name: users.last_name })
-      .from(users)
-      .where(eq(users.id, authorId))
-      .limit(1);
-
-    const commenterName = commenter
-      ? `${commenter.first_name} ${commenter.last_name}`
-      : "Quelqu'un";
-
-    if (post.author_id !== authorId) {
-      notifyPostCommented(post.author_id, postId, commenterName, authorId).catch((err) =>
-        console.error("❌ Erreur notif comment:", err)
-      );
-    }
-
+    const [commenter] = await db.select({ first_name: users.first_name, last_name: users.last_name }).from(users).where(eq(users.id, authorId)).limit(1);
+    const commenterName = commenter ? `${commenter.first_name} ${commenter.last_name}` : "Quelqu'un";
+    if (post.author_id !== authorId) notifyPostCommented(post.author_id, postId, commenterName, authorId).catch((err) => console.error("❌ Erreur notif comment:", err));
     if (input.parent_comment_id) {
-      const [parent] = await db
-        .select({ author_id: postComments.author_id })
-        .from(postComments)
-        .where(eq(postComments.id, input.parent_comment_id))
-        .limit(1);
-
-      if (
-        parent &&
-        parent.author_id !== authorId &&
-        parent.author_id !== post.author_id
-      ) {
-        notifyCommentReplied(parent.author_id, postId, commenterName, authorId).catch(
-          (err) => console.error("❌ Erreur notif reply:", err)
-        );
+      const [parent] = await db.select({ author_id: postComments.author_id }).from(postComments).where(eq(postComments.id, input.parent_comment_id)).limit(1);
+      if (parent && parent.author_id !== authorId && parent.author_id !== post.author_id) {
+        notifyCommentReplied(parent.author_id, postId, commenterName, authorId).catch((err) => console.error("❌ Erreur notif reply:", err));
       }
     }
-  } catch (err) {
-    console.error("❌ Erreur traitement notif commentaire:", err);
-  }
-
+  } catch (err) { console.error("❌ Erreur traitement notif commentaire:", err); }
   return created;
 }
 
-export async function getComments(
-  postId: number,
-  query: ListPostsQuery,
-  viewerId?: number
-) {
+export async function getComments(postId: number, query: ListPostsQuery, viewerId?: number) {
   const { limit, offset } = query;
-
   const hiddenIds = viewerId ? await getHiddenUserIds(viewerId) : [];
 
   const all = await db
     .select({
-      id: postComments.id,
-      post_id: postComments.post_id,
-      author_id: postComments.author_id,
-      content: postComments.content,
-      parent_comment_id: postComments.parent_comment_id,
-      media_url: postComments.media_url,
-      created_at: postComments.created_at,
-      author_first_name: users.first_name,
-      author_last_name: users.last_name,
-      author_username: users.username,
-      author_avatar_url: users.avatar_url,
-      author_verification_status: users.verification_status,
+      id: postComments.id, post_id: postComments.post_id, author_id: postComments.author_id, content: postComments.content, parent_comment_id: postComments.parent_comment_id, media_url: postComments.media_url, created_at: postComments.created_at,
+      author_first_name: users.first_name, author_last_name: users.last_name, author_username: users.username, author_avatar_url: users.avatar_url, author_verification_status: users.verification_status,
     })
-    .from(postComments)
-    .leftJoin(users, eq(users.id, postComments.author_id))
-    .where(
-      hiddenIds.length > 0
-        ? and(
-            eq(postComments.post_id, postId),
-            notInArray(postComments.author_id, hiddenIds)
-          )
-        : eq(postComments.post_id, postId)
-    )
+    .from(postComments).leftJoin(users, eq(users.id, postComments.author_id))
+    .where(hiddenIds.length > 0 ? and(eq(postComments.post_id, postId), notInArray(postComments.author_id, hiddenIds)) : eq(postComments.post_id, postId))
     .orderBy(postComments.created_at);
 
   const badgesMap = await getBadgesForUsers(all.map((c) => c.author_id));
-
   const roots = all.filter((c) => c.parent_comment_id === null);
   const replies = all.filter((c) => c.parent_comment_id !== null);
 
   const structured = roots.slice(offset, offset + limit).map((root) => ({
     ...root,
     author_badges: badgesMap.get(root.author_id) ?? [],
-    replies: replies
-      .filter((r) => r.parent_comment_id === root.id)
-      .map((r) => ({
-        ...r,
-        author_badges: badgesMap.get(r.author_id) ?? [],
-      })),
+    replies: replies.filter((r) => r.parent_comment_id === root.id).map((r) => ({ ...r, author_badges: badgesMap.get(r.author_id) ?? [] })),
   }));
-
   return structured;
 }
 
 export async function deleteComment(commentId: number, userId: number) {
-  const [comment] = await db
-    .select()
-    .from(postComments)
-    .where(eq(postComments.id, commentId))
-    .limit(1);
-
+  const [comment] = await db.select().from(postComments).where(eq(postComments.id, commentId)).limit(1);
   if (!comment) throw new AppError("Commentaire introuvable", 404);
-
-  const [post] = await db
-    .select()
-    .from(posts)
-    .where(eq(posts.id, comment.post_id))
-    .limit(1);
-
+  const [post] = await db.select().from(posts).where(eq(posts.id, comment.post_id)).limit(1);
   if (!post) throw new AppError("Post introuvable", 404);
+  if (comment.author_id !== userId && post.author_id !== userId) throw new AppError("Tu n'as pas le droit de supprimer ce commentaire", 403);
 
-  if (comment.author_id !== userId && post.author_id !== userId) {
-    throw new AppError("Tu n'as pas le droit de supprimer ce commentaire", 403);
-  }
-
-  await db
-    .delete(postComments)
-    .where(eq(postComments.parent_comment_id, commentId));
+  await db.delete(postComments).where(eq(postComments.parent_comment_id, commentId));
   await db.delete(postComments).where(eq(postComments.id, commentId));
-
-  const [countResult] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(postComments)
-    .where(eq(postComments.post_id, comment.post_id));
-
-  await db
-    .update(posts)
-    .set({ comments_count: countResult?.count ?? 0 })
-    .where(eq(posts.id, post.id));
+  const [countResult] = await db.select({ count: sql<number>`count(*)::int` }).from(postComments).where(eq(postComments.post_id, comment.post_id));
+  await db.update(posts).set({ comments_count: countResult?.count ?? 0 }).where(eq(posts.id, post.id));
 }
 
-// ============================================================
-// PARTAGE DE POST
-// ============================================================
-
-export async function sharePost(
-  postId: number,
-  authorId: number,
-  input: SharePostInput
-) {
-  const [original] = await db
-    .select()
-    .from(posts)
-    .where(eq(posts.id, postId))
-    .limit(1);
-
+export async function sharePost(postId: number, authorId: number, input: SharePostInput) {
+  const [original] = await db.select().from(posts).where(eq(posts.id, postId)).limit(1);
   if (!original) throw new AppError("Post introuvable", 404);
 
-  const [created] = await db
-    .insert(posts)
-    .values({
-      author_id: authorId,
-      content: input.share_comment ?? null,
-      shared_from_post_id: original.id,
-      share_comment: input.share_comment ?? null,
-      visibility: input.visibility,
-    })
-    .returning();
+  const [created] = await db.insert(posts).values({
+    author_id: authorId, content: input.share_comment ?? null, shared_from_post_id: original.id, share_comment: input.share_comment ?? null, visibility: input.visibility,
+  }).returning();
 
-  await db
-    .update(posts)
-    .set({ shares_count: sql`${posts.shares_count} + 1` })
-    .where(eq(posts.id, postId));
-
-  await db.insert(postShares).values({
-    post_id: postId,
-    user_id: authorId,
-  });
-
+  await db.update(posts).set({ shares_count: sql`${posts.shares_count} + 1` }).where(eq(posts.id, postId));
+  await db.insert(postShares).values({ post_id: postId, user_id: authorId });
   return enrichPost(created, authorId);
 }
 
-// ============================================================
-// PARTAGE D'ÉVÉNEMENT
-// ============================================================
-
-export async function shareEvent(
-  eventId: number,
-  authorId: number,
-  input: ShareEventInput
-) {
-  const [event] = await db
-    .select()
-    .from(events)
-    .where(eq(events.id, eventId))
-    .limit(1);
-
+export async function shareEvent(eventId: number, authorId: number, input: ShareEventInput) {
+  const [event] = await db.select().from(events).where(eq(events.id, eventId)).limit(1);
   if (!event) throw new AppError("Événement introuvable", 404);
-  if (event.status === "cancelled") {
-    throw new AppError("Impossible de partager un événement annulé", 400);
-  }
+  if (event.status === "cancelled") throw new AppError("Impossible de partager un événement annulé", 400);
 
-  const [created] = await db
-    .insert(posts)
-    .values({
-      author_id: authorId,
-      content: input.share_comment ?? null,
-      shared_event_id: event.id,
-      share_comment: input.share_comment ?? null,
-      visibility: input.visibility,
-    })
-    .returning();
-
+  const [created] = await db.insert(posts).values({
+    author_id: authorId, content: input.share_comment ?? null, shared_event_id: event.id, share_comment: input.share_comment ?? null, visibility: input.visibility,
+  }).returning();
   return enrichPost(created, authorId);
 }
-
-// ============================================================
-// LIKES SUR ÉVÉNEMENT (toggle)
-// ============================================================
 
 export async function toggleEventLike(eventId: number, userId: number) {
-  const [event] = await db
-    .select()
-    .from(events)
-    .where(eq(events.id, eventId))
-    .limit(1);
-
+  const [event] = await db.select().from(events).where(eq(events.id, eventId)).limit(1);
   if (!event) throw new AppError("Événement introuvable", 404);
 
-  const [existing] = await db
-    .select()
-    .from(eventLikes)
-    .where(
-      and(eq(eventLikes.event_id, eventId), eq(eventLikes.user_id, userId))
-    )
-    .limit(1);
+  const [existing] = await db.select().from(eventLikes).where(and(eq(eventLikes.event_id, eventId), eq(eventLikes.user_id, userId))).limit(1);
 
   if (existing) {
     await db.delete(eventLikes).where(eq(eventLikes.id, existing.id));
-
-    const [countRow] = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(eventLikes)
-      .where(eq(eventLikes.event_id, eventId));
-
+    const [countRow] = await db.select({ count: sql<number>`count(*)::int` }).from(eventLikes).where(eq(eventLikes.event_id, eventId));
     return { liked: false, likes_count: countRow?.count ?? 0 };
   } else {
     await db.insert(eventLikes).values({ event_id: eventId, user_id: userId });
-
-    const [countRow] = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(eventLikes)
-      .where(eq(eventLikes.event_id, eventId));
-
+    const [countRow] = await db.select({ count: sql<number>`count(*)::int` }).from(eventLikes).where(eq(eventLikes.event_id, eventId));
     if (event.organizer_id !== userId) {
-      const [liker] = await db
-        .select({ first_name: users.first_name, last_name: users.last_name })
-        .from(users)
-        .where(eq(users.id, userId))
-        .limit(1);
-
-      if (liker) {
-        notifyEventLiked(
-          event.organizer_id,
-          eventId,
-          event.title,
-          `${liker.first_name} ${liker.last_name}`,
-          userId
-        ).catch((err) => console.error("❌ Erreur notif like event:", err));
-      }
+      const [liker] = await db.select({ first_name: users.first_name, last_name: users.last_name }).from(users).where(eq(users.id, userId)).limit(1);
+      if (liker) notifyEventLiked(event.organizer_id, eventId, event.title, `${liker.first_name} ${liker.last_name}`, userId).catch((err) => console.error("❌ Erreur notif like event:", err));
     }
-
     return { liked: true, likes_count: countRow?.count ?? 0 };
   }
 }
 
-// ============================================================
-// PARTAGER UN ARTICLE EN POST
-// ============================================================
-export async function shareArticle(
-  articleId: number,
-  userId: number,
-  input: ShareEventInput
-) {
-  const [article] = await db
-    .select()
-    .from(articles)
-    .where(eq(articles.id, articleId))
-    .limit(1);
-
+export async function shareArticle(articleId: number, userId: number, input: ShareEventInput) {
+  const [article] = await db.select().from(articles).where(eq(articles.id, articleId)).limit(1);
   if (!article) throw new AppError("Article introuvable", 404);
 
-  const [created] = await db
-    .insert(posts)
-    .values({
-      author_id: userId,
-      content: input.share_comment ?? null,
-      visibility: input.visibility ?? "public",
-      shared_article_id: article.id,
-      share_comment: input.share_comment ?? null,
-    })
-    .returning();
-
-  return enrichPost(created, userId);
-}
-
-// ============================================================
-// PARTAGER UN REEL EN POST (ANKU LIVE)
-// ============================================================
-export async function shareReelToFeed(
-  reelId: number,
-  userId: number,
-  input: ShareEventInput
-) {
-  const [reel] = await db
-    .select()
-    .from(reels)
-    .where(eq(reels.id, reelId))
-    .limit(1);
-
-  if (!reel) throw new AppError("Reel introuvable", 404);
-
-  const [created] = await db
-    .insert(posts)
-    .values({
-      author_id: userId,
-      content: input.share_comment ?? null,
-      visibility: input.visibility ?? "public",
-      shared_reel_id: reel.id,
-      share_comment: input.share_comment ?? null,
-    })
-    .returning();
-
-  await db
-    .update(reels)
-    .set({ shares_count: sql`${reels.shares_count} + 1` })
-    .where(eq(reels.id, reelId));
-
+  const [created] = await db.insert(posts).values({
+    author_id: userId, content: input.share_comment ?? null, visibility: input.visibility ?? "public", shared_article_id: article.id, share_comment: input.share_comment ?? null,
+  }).returning();
   return enrichPost(created, userId);
 }

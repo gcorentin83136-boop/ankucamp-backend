@@ -83,6 +83,7 @@ export type ShareEventInput = z.infer<typeof shareEventSchema>;
 export const listPostsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(50).default(20),
   offset: z.coerce.number().int().min(0).default(0),
+  cursor: z.string().datetime().optional(), // 🆕 Ajouté pour le feed algorithmique
 });
 
 export type ListPostsQuery = z.infer<typeof listPostsQuerySchema>;
