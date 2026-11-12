@@ -35,7 +35,9 @@ async function uploadToCloudinary(
       {
         folder,
         resource_type: resourceType,
-        timeout: 600000, // 🆕 2 minutes de timeout pour les grosses vidéos
+        timeout: 600000,
+        // 🆕 On force la conversion en MP4 pour toutes les vidéos
+        format: resourceType === "video" || resourceType === "auto" ? "mp4" : undefined,
         transformation:
           resourceType === "image"
             ? [
@@ -47,6 +49,7 @@ async function uploadToCloudinary(
       },
       (error, result) => {
         if (error || !result) {
+          console.error("❌ Erreur Cloudinary détaillée:", error);
           return reject(
             new AppError(
               error?.message ?? "Échec de l'upload vers Cloudinary",
@@ -182,11 +185,15 @@ export async function uploadPostVideo(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifié", 401);
   if (!req.file) throw new AppError("Aucun fichier fourni", 400);
 
+  // 🆕 Logs pour vérifier ce qui arrive au backend
+  console.log("🎥 Upload vidéo - Type MIME reçu:", req.file.mimetype);
+  console.log("🎥 Upload vidéo - Taille:", (req.file.size / 1024 / 1024).toFixed(2), "Mo");
+
   const url = await uploadToCloudinary(
     req.file.buffer,
     "ankucamp/posts/videos",
     {
-      resourceType: "video",
+      resourceType: "auto", // 🆕 Auto-détection
     }
   );
 
@@ -295,7 +302,7 @@ export async function uploadProductVideo(
     req.file.buffer,
     "ankucamp/products/videos",
     {
-      resourceType: "video",
+      resourceType: "auto",
     }
   );
 
@@ -386,7 +393,7 @@ export async function uploadProductVideoDraft(
     req.file.buffer,
     "ankucamp/products/videos",
     {
-      resourceType: "video",
+      resourceType: "auto",
     }
   );
 
@@ -450,6 +457,7 @@ export async function uploadChatMedia(req: AuthRequest, res: Response) {
     url,
   });
 }
+
 // ============================================================
 // POST /uploads/comment-media
 // ============================================================

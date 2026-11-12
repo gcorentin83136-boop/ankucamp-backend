@@ -1,146 +1,23 @@
 import multer from "multer";
 import { AppError } from "../errors/AppError";
 
-// ------------------------------------------------------------
-// Upload IMAGES (avatars, covers, products...)
-// ------------------------------------------------------------
-const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5 MB
-const ALLOWED_IMAGE_TYPES = [
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-  "image/gif",
-];
+// 🆕 Configuration de Multer
+const storage = multer.memoryStorage();
 
 export const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: MAX_IMAGE_SIZE },
-  fileFilter: (_req, file, cb) => {
-    if (!ALLOWED_IMAGE_TYPES.includes(file.mimetype)) {
-      return cb(
-        new AppError(
-          "Format d'image non supporté (jpeg, png, webp, gif uniquement)",
-          400
-        )
-      );
-    }
-    cb(null, true);
+  storage,
+  limits: {
+    fileSize: 250 * 1024 * 1024, // 🆕 250 Mo (pour les vidéos de story)
   },
-});
-
-// ------------------------------------------------------------
-// Upload COVER (bannière profil + couvertures - 10 MB max)
-// ------------------------------------------------------------
-const MAX_COVER_SIZE = 10 * 1024 * 1024; // 10 MB
-
-export const uploadCover = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: MAX_COVER_SIZE },
-  fileFilter: (_req, file, cb) => {
-    if (!ALLOWED_IMAGE_TYPES.includes(file.mimetype)) {
-      return cb(
-        new AppError(
-          "Format d'image non supporté (jpeg, png, webp, gif uniquement)",
-          400
-        )
-      );
-    }
-    cb(null, true);
-  },
-});
-// ------------------------------------------------------------
-// Upload DOCUMENTS (KYC : PDF + images, 10 MB max)
-// ------------------------------------------------------------
-const MAX_DOCUMENT_SIZE = 10 * 1024 * 1024; // 10 MB
-const ALLOWED_DOCUMENT_TYPES = [
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-  "application/pdf",
-];
-
-// ------------------------------------------------------------
-// Upload CHAT (images, audios, videos pour la messagerie)
-// ------------------------------------------------------------
-const MAX_CHAT_SIZE = 200 * 1024 * 1024; // 200 MB
-
-const ALLOWED_CHAT_DOC_TYPES = [
-  "application/pdf",
-  "application/zip",
-  "application/x-zip-compressed",
-  "application/msword",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "application/vnd.ms-excel",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  "application/vnd.ms-powerpoint",
-  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-  "text/plain",
-  "text/csv",
-  "application/x-rar-compressed",
-  "application/x-7z-compressed",
-  "application/gzip",
-  "application/x-tar"
-];
-
-export const uploadChat = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: MAX_CHAT_SIZE },
-  fileFilter: (_req, file, cb) => {
+  fileFilter: (req, file, cb) => {
+    // 🆕 On accepte explicitement les images et les vidéos (dont le WebM de la caméra)
     if (
       file.mimetype.startsWith("image/") ||
-      file.mimetype.startsWith("audio/") ||
-      file.mimetype.startsWith("video/") || ALLOWED_CHAT_DOC_TYPES.includes(file.mimetype)
+      file.mimetype.startsWith("video/")
     ) {
       cb(null, true);
     } else {
-      cb(
-        new AppError(
-          "Format non supporté (images, audios et vidéos uniquement)",
-          400
-        )
-      );
+      cb(new AppError("Format de fichier non supporté. Image ou vidéo requis.", 400));
     }
-  },
-});
-
-export const uploadDocument = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: MAX_DOCUMENT_SIZE },
-  fileFilter: (_req, file, cb) => {
-    if (!ALLOWED_DOCUMENT_TYPES.includes(file.mimetype)) {
-      return cb(
-        new AppError(
-          "Format de document non supporté (PDF, jpeg, png, webp uniquement)",
-          400
-        )
-      );
-    }
-    cb(null, true);
-  },
-});
-
-// ------------------------------------------------------------
-// Upload VIDÉOS (produits : mp4, webm, mov, 100 MB max)
-// ------------------------------------------------------------
-const MAX_VIDEO_SIZE = 100 * 1024 * 1024; // 100 MB
-const ALLOWED_VIDEO_TYPES = [
-  "video/mp4",
-  "video/webm",
-  "video/quicktime", // .mov
-];
-
-export const uploadVideo = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: MAX_VIDEO_SIZE },
-  fileFilter: (_req, file, cb) => {
-    if (!ALLOWED_VIDEO_TYPES.includes(file.mimetype)) {
-      return cb(
-        new AppError(
-          "Format vidéo non supporté (mp4, webm, mov uniquement)",
-          400
-        )
-      );
-    }
-    cb(null, true);
   },
 });

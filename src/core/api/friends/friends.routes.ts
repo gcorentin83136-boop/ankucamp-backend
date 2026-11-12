@@ -19,10 +19,11 @@ const router = Router();
 router.use(authMiddleware);
 
 // ============================================================
-// STATS & STATUT
+// STATS & STATUT (Routes spécifiques EN PREMIER)
 // ============================================================
 
 router.get("/stats", asyncHandler(stats));
+router.get("/status/:userId", asyncHandler(status)); // 🆕 Déplacé ici !
 
 // ============================================================
 // LISTES
@@ -43,15 +44,9 @@ router.put("/:id/decline", asyncHandler(decline));
 router.delete("/:id/cancel", asyncHandler(cancel));
 
 // ============================================================
-// SUPPRESSION D'UN AMI
+// SUPPRESSION D'UN AMI (Route dynamique EN DERNIER)
 // ============================================================
 
 router.delete("/:userId", asyncHandler(remove));
-
-// ============================================================
-// STATUT RELATION
-// ============================================================
-
-router.get("/status/:userId", asyncHandler(status));
 
 export default router;

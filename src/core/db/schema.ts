@@ -419,11 +419,11 @@ export const stories = pgTable("stories", {
   id: serial("id").primaryKey(),
   author_id: integer("author_id").notNull(),
   media_url: text("media_url").notNull(),
-  media_type: varchar("media_type", { length: 20 }).default("video").notNull(), // 'video' | 'image'
+  media_type: varchar("media_type", { length: 20 }).default("video").notNull(),
   caption: text("caption"),
   visibility: varchar("visibility", { length: 20 }).default("public").notNull(),
-  expires_at: timestamp("expires_at").notNull(), // Date d'expiration (48h)
-  elements: text("elements"), // 🆕 Sauvegarde du texte, emoji, couleurs en JSON
+  expires_at: timestamp("expires_at").notNull(),
+  elements: text("elements"),
   created_at: timestamp("created_at").defaultNow(),
 });
 
@@ -526,10 +526,13 @@ export const accountDeletionRequests = pgTable("account_deletion_requests", {
   created_at: timestamp("created_at").defaultNow(),
 });
 
+// ============================================================
+// SIGNALEMENTS (Remplace la table reports redondante)
+// ============================================================
 export const contentReports = pgTable("content_reports", {
   id: serial("id").primaryKey(),
   reporter_id: integer("reporter_id").notNull(),
-  target_type: varchar("target_type", { length: 20 }).notNull(),
+  target_type: varchar("target_type", { length: 20 }).notNull(), // 'post', 'story', 'comment', 'event'
   target_id: integer("target_id").notNull(),
   reason: varchar("reason", { length: 30 }).notNull(),
   description: text("description"),

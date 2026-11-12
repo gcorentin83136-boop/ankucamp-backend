@@ -1,7 +1,8 @@
-import { eq, and, desc, gt, or, inArray } from "drizzle-orm";
+import { eq, and, desc, gt, or, inArray, notInArray } from "drizzle-orm";
 import { db } from "../../db";
 import { stories, users, friendships } from "../../db/schema";
 import { AppError } from "../../errors/AppError";
+import { getHiddenUserIds } from "../users/blocks.service";
 
 async function getFriendIds(userId: number): Promise<number[]> {
   const rows = await db
@@ -33,7 +34,7 @@ export async function createStory(authorId: number, input: any) {
     caption: input.caption,
     visibility: input.visibility || "public",
     expires_at: input.expires_at ? new Date(input.expires_at) : new Date(Date.now() + 48 * 60 * 60 * 1000),
-    elements: input.elements || null, // 🆕
+    elements: input.elements || null,
   }).returning();
   
   return enrichStory(created, authorId);
@@ -41,6 +42,7 @@ export async function createStory(authorId: number, input: any) {
 
 export async function getStoriesFeed(viewerId: number) {
   const friendIds = await getFriendIds(viewerId);
+  const hiddenIds = await getHiddenUserIds(viewerId);
 
   const visibilityConditions: any[] = [
     eq(stories.visibility, "public"),
@@ -53,17 +55,42 @@ export async function getStoriesFeed(viewerId: number) {
     );
   }
 
-  const rows = await db.select()
-    .from(stories)
-    .where(
-      and(
-        gt(stories.expires_at, new Date()),
-        or(...visibilityConditions)
-      )
-    )
-    .orderBy(desc(stories.created_at));
-    
-  return Promise.all(rows.map(s => enrichStory(s, viewerId)));
+  let whereClause: any = or(...visibilityConditions);
+  if (hiddenIds.length > 0) {
+    whereClause = and(whereClause, notInArray(stories.author_id, hiddenIds));
+  }
+
+  const rows = await db.select({
+    story: stories,
+    author: {
+      id: users.id, username: users.username, first_name: users.first_name,
+      last_name: users.last_name, avatar_url: users.avatar_url,
+    }
+  })
+  .from(stories)
+  .innerJoin(users, eq(users.id, stories.author_id))
+  .where(and(gt(stories.expires_at, new Date()), whereClause))
+  .orderBy(desc(stories.created_at));
+
+  // 🆕 Groupement par utilisateur
+  const grouped = new Map<number, { author: any, stories: any[] }>();
+  
+  for (const row of rows) {
+    const authorId = row.author.id;
+    if (!grouped.has(authorId)) {
+      grouped.set(authorId, { author: row.author, stories: [] });
+    }
+    grouped.get(authorId)!.stories.push({
+      ...row.story,
+      elements: row.story.elements ? JSON.parse(row.story.elements) : []
+    });
+  }
+
+  // On trie les stories de la plus ancienne à la plus récente
+  return Array.from(grouped.values()).map(g => ({
+    ...g,
+    stories: g.stories.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+  }));
 }
 
 export async function updateVisibility(storyId: number, userId: number, visibility: string) {
@@ -86,12 +113,13 @@ export async function deleteStory(storyId: number, userId: number) {
 
 async function enrichStory(story: any, viewerId?: number) {
   const [author] = await db.select({ 
-    id: users.id, 
-    first_name: users.first_name, 
-    last_name: users.last_name, 
-    username: users.username, 
-    avatar_url: users.avatar_url 
+    id: users.id, first_name: users.first_name, last_name: users.last_name, 
+    username: users.username, avatar_url: users.avatar_url 
   }).from(users).where(eq(users.id, story.author_id)).limit(1);
 
-  return { ...story, author };
+  return { 
+    ...story, 
+    author,
+    elements: story.elements ? JSON.parse(story.elements) : []
+  };
 }

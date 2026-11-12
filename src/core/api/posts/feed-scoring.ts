@@ -3,12 +3,12 @@ import { db } from "../../db";
 import { postLikes, postComments, posts } from "../../db/schema";
 
 export const FEED_CONFIG = {
-  weights: { recency: 0.30, engagement: 0.20, affinity: 0.25, interest: 0.05, serendipity: 0.02 },
-  boostBonus: 2.0,
-  recencyHalfLifeHours: 24,
+  // 🆕 Poids mis à jour : Récence (0.45) et Engagement (0.35) dominent
+  weights: { recency: 0.45, engagement: 0.35, affinity: 0.15, interest: 0.05, serendipity: 0.00 },
+  recencyHalfLifeHours: 12, // Un post perd sa valeur plus vite (12h au lieu de 24h)
   engagementCap: 500,
   implicitAffinityWindowDays: 30,
-  poolMultiplier: 15,
+  poolMultiplier: 20,
   poolCap: 500,
 };
 
@@ -31,30 +31,20 @@ export function calculateFeedScore(post: FeedCandidate, ctx: UserContext, now: D
   const ageHours = ageMs / (1000 * 60 * 60);
 
   const recency = Math.exp(-ageHours / FEED_CONFIG.recencyHalfLifeHours);
-  const rawEngagement = (post.likes_count || 0) + 2 * (post.comments_count || 0) + 3 * (post.shares_count || 0);
+  const rawEngagement = (post.likes_count || 0) + (post.comments_count || 0) * 2 + (post.shares_count || 0) * 3;
   const engagement = Math.log(1 + rawEngagement) / Math.log(1 + FEED_CONFIG.engagementCap);
 
   let affinity = 0;
-  if (post.author_id === ctx.viewerId) affinity = 0.7;
-  else if (ctx.friendIds.has(post.author_id)) affinity = 1.0;
-  else {
-    const past = ctx.interactionCounts.get(post.author_id) ?? 0;
-    affinity = 0.3 * (Math.log(1 + past) / Math.log(21));
-  }
+  if (post.author_id === ctx.viewerId) affinity = 1.0;
+  else if (ctx.friendIds.has(post.author_id)) affinity = 0.8;
 
-  let interest = 0;
-  if (post.media_urls) interest += 0.15;
-  if (post.shared_article_id) interest += 0.15;
-  if (post.shared_event_id) interest += 0.10;
-
-  const serendipity = Math.random();
   const w = FEED_CONFIG.weights;
-  
-  const total = w.recency * recency + w.engagement * engagement + w.affinity * affinity + w.interest * interest + w.serendipity * serendipity;
+  const total = w.recency * recency + w.engagement * engagement + w.affinity * affinity;
 
   return { total };
 }
 
+// ... (getInteractionCounts reste inchangé)
 export async function getInteractionCounts(viewerId: number): Promise<Map<number, number>> {
   const since = new Date(Date.now() - FEED_CONFIG.implicitAffinityWindowDays * 24 * 60 * 60 * 1000);
   
