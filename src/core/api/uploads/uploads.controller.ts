@@ -15,7 +15,6 @@ interface UploadOptions {
   height?: number;
   crop?: string;
   resourceType?: "image" | "raw" | "auto" | "video";
-  format?: string;
 }
 
 async function uploadToCloudinary(
@@ -34,10 +33,9 @@ async function uploadToCloudinary(
     const stream = cloudinary.uploader.upload_stream(
       {
         folder,
-        resource_type: resourceType,
+        resource_type: resourceType, // 🆕 On laisse auto/video gérer
         timeout: 600000,
-        // 🆕 On force la conversion en MP4 pour toutes les vidéos
-        format: resourceType === "video" || resourceType === "auto" ? "mp4" : undefined,
+        // 🆕 On ne force plus le format mp4
         transformation:
           resourceType === "image"
             ? [
@@ -70,17 +68,8 @@ async function uploadToCloudinary(
 export async function uploadAvatar(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifié", 401);
   if (!req.file) throw new AppError("Aucun fichier fourni", 400);
-
-  const url = await uploadToCloudinary(req.file.buffer, "ankucamp/avatars", {
-    width: 500,
-    height: 500,
-  });
-
-  await db
-    .update(users)
-    .set({ avatar_url: url })
-    .where(eq(users.id, req.user.id));
-
+  const url = await uploadToCloudinary(req.file.buffer, "ankucamp/avatars", { width: 500, height: 500 });
+  await db.update(users).set({ avatar_url: url }).where(eq(users.id, req.user.id));
   return res.status(200).json({ success: true, message: "Avatar mis à jour", url });
 }
 
@@ -90,17 +79,8 @@ export async function uploadAvatar(req: AuthRequest, res: Response) {
 export async function uploadCover(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifié", 401);
   if (!req.file) throw new AppError("Aucun fichier fourni", 400);
-
-  const url = await uploadToCloudinary(req.file.buffer, "ankucamp/covers", {
-    width: 2000,
-    height: 600,
-  });
-
-  await db
-    .update(users)
-    .set({ cover_url: url })
-    .where(eq(users.id, req.user.id));
-
+  const url = await uploadToCloudinary(req.file.buffer, "ankucamp/covers", { width: 2000, height: 600 });
+  await db.update(users).set({ cover_url: url }).where(eq(users.id, req.user.id));
   return res.status(200).json({ success: true, message: "Cover mise à jour", url });
 }
 
@@ -110,21 +90,13 @@ export async function uploadCover(req: AuthRequest, res: Response) {
 export async function uploadShopLogo(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifié", 401);
   if (!req.file) throw new AppError("Aucun fichier fourni", 400);
-
   const shopId = Number(req.body.shop_id);
   if (isNaN(shopId)) throw new AppError("shop_id requis dans le body", 400);
-
   const [shop] = await db.select().from(shops).where(eq(shops.id, shopId)).limit(1);
   if (!shop) throw new AppError("Boutique introuvable", 404);
   if (shop.owner_id !== req.user.id) throw new AppError("Non propriétaire", 403);
-
-  const url = await uploadToCloudinary(req.file.buffer, "ankucamp/shops", {
-    width: 500,
-    height: 500,
-  });
-
+  const url = await uploadToCloudinary(req.file.buffer, "ankucamp/shops", { width: 500, height: 500 });
   await db.update(shops).set({ logo_url: url }).where(eq(shops.id, shopId));
-
   return res.status(200).json({ success: true, message: "Logo mis à jour", url });
 }
 
@@ -134,31 +106,14 @@ export async function uploadShopLogo(req: AuthRequest, res: Response) {
 export async function uploadProductImage(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifié", 401);
   if (!req.file) throw new AppError("Aucun fichier fourni", 400);
-
   const productId = Number(req.body.product_id);
   if (isNaN(productId)) throw new AppError("product_id requis dans le body", 400);
-
-  const [product] = await db
-    .select()
-    .from(products)
-    .where(eq(products.id, productId))
-    .limit(1);
+  const [product] = await db.select().from(products).where(eq(products.id, productId)).limit(1);
   if (!product) throw new AppError("Produit introuvable", 404);
-
-  const [shop] = await db
-    .select()
-    .from(shops)
-    .where(eq(shops.id, product.shop_id))
-    .limit(1);
+  const [shop] = await db.select().from(shops).where(eq(shops.id, product.shop_id)).limit(1);
   if (!shop || shop.owner_id !== req.user.id) throw new AppError("Non propriétaire", 403);
-
-  const url = await uploadToCloudinary(req.file.buffer, "ankucamp/products", {
-    width: 1200,
-    height: 1200,
-  });
-
+  const url = await uploadToCloudinary(req.file.buffer, "ankucamp/products", { width: 1200, height: 1200 });
   await db.update(products).set({ image_url: url }).where(eq(products.id, productId));
-
   return res.status(200).json({ success: true, message: "Image produit mise à jour", url });
 }
 
@@ -168,40 +123,27 @@ export async function uploadProductImage(req: AuthRequest, res: Response) {
 export async function uploadPostMedia(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifié", 401);
   if (!req.file) throw new AppError("Aucun fichier fourni", 400);
-
-  const url = await uploadToCloudinary(req.file.buffer, "ankucamp/posts", {
-    width: 1200,
-    height: 1200,
-  });
-
+  const url = await uploadToCloudinary(req.file.buffer, "ankucamp/posts", { width: 1200, height: 1200 });
   return res.status(200).json({ success: true, message: "Média uploadé", url });
 }
 
 // ============================================================
 // POST /uploads/post-video
-// Upload une vidéo pour un post (réseau social)
 // ============================================================
 export async function uploadPostVideo(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifié", 401);
   if (!req.file) throw new AppError("Aucun fichier fourni", 400);
 
-  // 🆕 Logs pour vérifier ce qui arrive au backend
-  console.log("🎥 Upload vidéo - Type MIME reçu:", req.file.mimetype);
+  console.log("🎥 Upload vidéo - Type MIME:", req.file.mimetype);
   console.log("🎥 Upload vidéo - Taille:", (req.file.size / 1024 / 1024).toFixed(2), "Mo");
 
   const url = await uploadToCloudinary(
     req.file.buffer,
     "ankucamp/posts/videos",
-    {
-      resourceType: "auto", // 🆕 Auto-détection
-    }
+    { resourceType: "auto" } // 🆕 Auto-détection
   );
 
-  return res.status(200).json({
-    success: true,
-    message: "Vidéo uploadée",
-    url,
-  });
+  return res.status(200).json({ success: true, message: "Vidéo uploadée", url });
 }
 
 // ============================================================
@@ -210,275 +152,105 @@ export async function uploadPostVideo(req: AuthRequest, res: Response) {
 export async function uploadKycDocument(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifié", 401);
   if (!req.file) throw new AppError("Aucun fichier fourni", 400);
-
-  const url = await uploadToCloudinary(
-    req.file.buffer,
-    "ankucamp/kyc-documents",
-    { resourceType: "auto" }
-  );
-
-  return res.status(200).json({
-    success: true,
-    message: "Document uploadé",
-    url,
-  });
+  const url = await uploadToCloudinary(req.file.buffer, "ankucamp/kyc-documents", { resourceType: "auto" });
+  return res.status(200).json({ success: true, message: "Document uploadé", url });
 }
 
 // ============================================================
 // POST /uploads/product-image-draft
 // ============================================================
-export async function uploadProductImageDraft(
-  req: AuthRequest,
-  res: Response
-) {
+export async function uploadProductImageDraft(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifie", 401);
   if (!req.file) throw new AppError("Aucun fichier fourni", 400);
-
-  const url = await uploadToCloudinary(
-    req.file.buffer,
-    "ankucamp/products",
-    {
-      width: 1200,
-      height: 1200,
-    }
-  );
-
-  return res.status(200).json({
-    success: true,
-    message: "Image uploadee",
-    url,
-  });
+  const url = await uploadToCloudinary(req.file.buffer, "ankucamp/products", { width: 1200, height: 1200 });
+  return res.status(200).json({ success: true, message: "Image uploadee", url });
 }
 
 // ============================================================
 // POST /uploads/product-video
 // ============================================================
-export async function uploadProductVideo(
-  req: AuthRequest,
-  res: Response
-) {
+export async function uploadProductVideo(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifie", 401);
   if (!req.file) throw new AppError("Aucun fichier fourni", 400);
-
   const productId = Number(req.body.product_id);
-  if (isNaN(productId)) {
-    throw new AppError("product_id requis dans le body", 400);
-  }
-
-  const [product] = await db
-    .select()
-    .from(products)
-    .where(eq(products.id, productId))
-    .limit(1);
+  if (isNaN(productId)) throw new AppError("product_id requis dans le body", 400);
+  const [product] = await db.select().from(products).where(eq(products.id, productId)).limit(1);
   if (!product) throw new AppError("Produit introuvable", 404);
-
-  const [shop] = await db
-    .select()
-    .from(shops)
-    .where(eq(shops.id, product.shop_id))
-    .limit(1);
-  if (!shop || shop.owner_id !== req.user.id) {
-    throw new AppError("Non proprietaire", 403);
-  }
+  const [shop] = await db.select().from(shops).where(eq(shops.id, product.shop_id)).limit(1);
+  if (!shop || shop.owner_id !== req.user.id) throw new AppError("Non proprietaire", 403);
 
   let videos: string[] = [];
   if (product.video_urls) {
-    try {
-      videos = JSON.parse(product.video_urls);
-      if (!Array.isArray(videos)) videos = [];
-    } catch {
-      videos = [];
-    }
+    try { videos = JSON.parse(product.video_urls); if (!Array.isArray(videos)) videos = []; } catch { videos = []; }
   }
+  if (videos.length >= 3) throw new AppError("Maximum 3 videos par produit.", 400);
 
-  if (videos.length >= 3) {
-    throw new AppError(
-      "Maximum 3 videos par produit. Supprime-en une avant d'en ajouter une nouvelle.",
-      400
-    );
-  }
-
-  const url = await uploadToCloudinary(
-    req.file.buffer,
-    "ankucamp/products/videos",
-    {
-      resourceType: "auto",
-    }
-  );
-
+  const url = await uploadToCloudinary(req.file.buffer, "ankucamp/products/videos", { resourceType: "auto" });
   videos.push(url);
-
-  await db
-    .update(products)
-    .set({ video_urls: JSON.stringify(videos) })
-    .where(eq(products.id, productId));
-
-  return res.status(200).json({
-    success: true,
-    message: "Video ajoutee",
-    url,
-    video_urls: videos,
-  });
+  await db.update(products).set({ video_urls: JSON.stringify(videos) }).where(eq(products.id, productId));
+  return res.status(200).json({ success: true, message: "Video ajoutee", url, video_urls: videos });
 }
 
 // ============================================================
 // DELETE /uploads/product-video
 // ============================================================
-export async function deleteProductVideo(
-  req: AuthRequest,
-  res: Response
-) {
+export async function deleteProductVideo(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifie", 401);
-
-  const { product_id, url } = req.body as {
-    product_id?: number;
-    url?: string;
-  };
-
-  if (!product_id || !url) {
-    throw new AppError("product_id et url requis", 400);
-  }
-
-  const [product] = await db
-    .select()
-    .from(products)
-    .where(eq(products.id, product_id))
-    .limit(1);
+  const { product_id, url } = req.body as { product_id?: number; url?: string; };
+  if (!product_id || !url) throw new AppError("product_id et url requis", 400);
+  const [product] = await db.select().from(products).where(eq(products.id, product_id)).limit(1);
   if (!product) throw new AppError("Produit introuvable", 404);
-
-  const [shop] = await db
-    .select()
-    .from(shops)
-    .where(eq(shops.id, product.shop_id))
-    .limit(1);
-  if (!shop || shop.owner_id !== req.user.id) {
-    throw new AppError("Non proprietaire", 403);
-  }
+  const [shop] = await db.select().from(shops).where(eq(shops.id, product.shop_id)).limit(1);
+  if (!shop || shop.owner_id !== req.user.id) throw new AppError("Non proprietaire", 403);
 
   let videos: string[] = [];
   if (product.video_urls) {
-    try {
-      videos = JSON.parse(product.video_urls);
-      if (!Array.isArray(videos)) videos = [];
-    } catch {
-      videos = [];
-    }
+    try { videos = JSON.parse(product.video_urls); if (!Array.isArray(videos)) videos = []; } catch { videos = []; }
   }
-
   videos = videos.filter((v) => v !== url);
-
-  await db
-    .update(products)
-    .set({ video_urls: videos.length > 0 ? JSON.stringify(videos) : null })
-    .where(eq(products.id, product_id));
-
-  return res.status(200).json({
-    success: true,
-    message: "Video supprimee",
-    video_urls: videos,
-  });
+  await db.update(products).set({ video_urls: videos.length > 0 ? JSON.stringify(videos) : null }).where(eq(products.id, product_id));
+  return res.status(200).json({ success: true, message: "Video supprimee", video_urls: videos });
 }
 
 // ============================================================
 // POST /uploads/product-video-draft
 // ============================================================
-export async function uploadProductVideoDraft(
-  req: AuthRequest,
-  res: Response
-) {
+export async function uploadProductVideoDraft(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifie", 401);
   if (!req.file) throw new AppError("Aucun fichier fourni", 400);
-
-  const url = await uploadToCloudinary(
-    req.file.buffer,
-    "ankucamp/products/videos",
-    {
-      resourceType: "auto",
-    }
-  );
-
-  return res.status(200).json({
-    success: true,
-    message: "Video uploadee",
-    url,
-  });
+  const url = await uploadToCloudinary(req.file.buffer, "ankucamp/products/videos", { resourceType: "auto" });
+  return res.status(200).json({ success: true, message: "Video uploadee", url });
 }
 
 // ============================================================
 // POST /uploads/event-cover
 // ============================================================
-export async function uploadEventCover(
-  req: AuthRequest,
-  res: Response
-) {
+export async function uploadEventCover(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifié", 401);
   if (!req.file) throw new AppError("Aucun fichier fourni", 400);
-
-  const url = await uploadToCloudinary(
-    req.file.buffer,
-    "ankucamp/events/covers",
-    {
-      resourceType: "image",
-    }
-  );
-
-  return res.status(200).json({
-    success: true,
-    message: "Image uploadée",
-    url,
-  });
+  const url = await uploadToCloudinary(req.file.buffer, "ankucamp/events/covers", { resourceType: "image" });
+  return res.status(200).json({ success: true, message: "Image uploadée", url });
 }
 
 // ============================================================
 // POST /uploads/chat-media
-// Upload un média (image, audio, vidéo) pour la messagerie
 // ============================================================
 export async function uploadChatMedia(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifié", 401);
   if (!req.file) throw new AppError("Aucun fichier fourni", 400);
-
   let resourceType: "image" | "video" | "auto" = "auto";
-  
-  if (req.file.mimetype.startsWith("image/")) {
-    resourceType = "image";
-  } else if (req.file.mimetype.startsWith("video/")) {
-    resourceType = "video";
-  }
-
-  const url = await uploadToCloudinary(
-    req.file.buffer,
-    "ankucamp/chat",
-    { resourceType }
-  );
-
-  return res.status(200).json({
-    success: true,
-    message: "Média de chat uploadé",
-    url,
-  });
+  if (req.file.mimetype.startsWith("image/")) resourceType = "image";
+  else if (req.file.mimetype.startsWith("video/")) resourceType = "video";
+  const url = await uploadToCloudinary(req.file.buffer, "ankucamp/chat", { resourceType });
+  return res.status(200).json({ success: true, message: "Média de chat uploadé", url });
 }
 
 // ============================================================
 // POST /uploads/comment-media
 // ============================================================
-export async function uploadCommentMedia(
-  req: AuthRequest,
-  res: Response
-) {
+export async function uploadCommentMedia(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifié", 401);
   if (!req.file) throw new AppError("Aucun fichier fourni", 400);
-
-  const url = await uploadToCloudinary(
-    req.file.buffer,
-    "ankucamp/comments",
-    {
-      resourceType: "image",
-    }
-  );
-
-  return res.status(200).json({
-    success: true,
-    message: "Média uploadé",
-    url,
-  });
+  const url = await uploadToCloudinary(req.file.buffer, "ankucamp/comments", { resourceType: "image" });
+  return res.status(200).json({ success: true, message: "Média uploadé", url });
 }

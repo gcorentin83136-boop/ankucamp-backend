@@ -3,6 +3,7 @@ import cors from "cors";
 import helmet from "helmet";
 import pinoHttp from "pino-http";
 import session from "express-session";
+import path from "path"; // 🆕 Import ajouté
 
 import authRoutes from "./core/api/auth/auth.routes";
 import twoFactorRoutes from "./core/api/auth/2fa/2fa.routes";
@@ -44,7 +45,7 @@ import categoriesAdminRoutes from "./core/api/categories/categories.admin.routes
 import auditRoutes from "./core/api/audit/audit.routes";
 import backupRoutes from "./core/api/backup/backup.routes";
 import contactRoutes from "./core/api/contact/contact.routes";
-import storiesRoutes from "./core/api/stories/stories.routes"; // 🆕 Ajouté
+import storiesRoutes from "./core/api/stories/stories.routes";
 
 import { errorHandler } from "./core/errors/errorHandler";
 import { globalLimiter } from "./config/security";
@@ -64,7 +65,7 @@ setupSwagger(app);
 // ===============
 // SÉCURITÉ
 // ===============
-app.use(helmet());
+app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } })); // 🆕 Autorise le chargement des vidéos locales
 
 app.use(
   cors({
@@ -105,13 +106,16 @@ app.use("/payments/webhook", raw({ type: "application/json" }));
 // ===============
 app.use(express.json({ limit: "1mb" }));
 
+// 🆕 SERVIR LE DOSSIER PUBLIC (POUR LES VIDÉOS LOCALES)
+app.use('/uploads', express.static(path.join(process.cwd(), 'public', 'uploads')));
+
 // ===============
-// SENTRY — attache le user au contexte (si dispo)
+// SENTRY
 // ===============
 app.use(sentryUserMiddleware);
 
 // ===============
-// STRIPE (autres routes)
+// STRIPE
 // ===============
 app.use("/payments", paymentsRoutes);
 
@@ -144,7 +148,7 @@ app.get("/", (_req, res) => {
 // ROUTES
 // ===============
 
-// ⚠️ /auth/2fa AVANT /auth (ordre important !)
+// ⚠️ /auth/2fa AVANT /auth
 app.use("/auth/2fa", twoFactorRoutes);
 app.use("/auth", authRoutes);
 
@@ -184,7 +188,7 @@ app.use("/admin/categories", categoriesAdminRoutes);
 app.use("/admin/audit", auditRoutes);
 app.use("/admin/backup", backupRoutes);
 app.use("/contact", contactRoutes);
-app.use("/stories", storiesRoutes); // 🆕 Route des Stories
+app.use("/stories", storiesRoutes);
 
 // ===============
 // 404
