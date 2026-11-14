@@ -33,9 +33,8 @@ async function uploadToCloudinary(
     const stream = cloudinary.uploader.upload_stream(
       {
         folder,
-        resource_type: resourceType, // 🆕 On laisse auto/video gérer
+        resource_type: resourceType,
         timeout: 600000,
-        // 🆕 On ne force plus le format mp4
         transformation:
           resourceType === "image"
             ? [
@@ -137,13 +136,19 @@ export async function uploadPostVideo(req: AuthRequest, res: Response) {
   console.log("🎥 Upload vidéo - Type MIME:", req.file.mimetype);
   console.log("🎥 Upload vidéo - Taille:", (req.file.size / 1024 / 1024).toFixed(2), "Mo");
 
-  const url = await uploadToCloudinary(
-    req.file.buffer,
-    "ankucamp/posts/videos",
-    { resourceType: "auto" } // 🆕 Auto-détection
-  );
-
-  return res.status(200).json({ success: true, message: "Vidéo uploadée", url });
+  // 🆕 On tente Cloudinary en priorité
+  try {
+    const url = await uploadToCloudinary(
+      req.file.buffer,
+      "ankucamp/posts/videos",
+      { resourceType: "auto" }
+    );
+    return res.status(200).json({ success: true, message: "Vidéo uploadée sur Cloudinary", url });
+  } catch (err) {
+    console.error("❌ Erreur Cloudinary, fallback local.", err);
+    // 🆕 En cas d'échec, on renvoie une erreur 500 pour que le frontend utilise l'URL locale
+    throw new AppError("Impossible d'uploader la vidéo sur Cloudinary", 500);
+  }
 }
 
 // ============================================================
