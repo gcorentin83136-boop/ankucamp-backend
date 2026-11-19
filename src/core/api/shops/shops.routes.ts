@@ -1,0 +1,40 @@
+import { Router } from "express";
+import { authMiddleware } from "../../middlewares/auth.middleware";
+import { requireRole } from "../../middlewares/role.middleware";
+import { asyncHandler } from "../../errors/asyncHandler";
+import {
+  listShops,
+  listShopsNearby,
+  getOneShop,
+  listMyShops,
+  createOneShop,
+  updateOneShop,
+  deleteOneShop,
+  geocodeOneShop,
+  updateLocation,
+} from "./shops.controller";
+
+const router = Router();
+
+// ⚠️ /nearby AVANT /:id
+router.get("/nearby", asyncHandler(listShopsNearby));
+
+router.get("/", asyncHandler(listShops));
+
+// 🆕 Remplacement de "/owner/me" par "/mine" pour matcher le frontend
+router.get("/mine", authMiddleware, asyncHandler(listMyShops));
+
+router.post(
+  "/",
+  authMiddleware,
+  requireRole("professionnel"),
+  asyncHandler(createOneShop)
+);
+
+router.get("/:id", asyncHandler(getOneShop));
+router.post("/:id/geocode", authMiddleware, asyncHandler(geocodeOneShop));
+router.put("/:id/location", authMiddleware, asyncHandler(updateLocation));
+router.put("/:id", authMiddleware, asyncHandler(updateOneShop));
+router.delete("/:id", authMiddleware, asyncHandler(deleteOneShop));
+
+export default router;
