@@ -12,7 +12,7 @@ jobs:
 
     strategy:
       matrix:
-        node-version: [20.x]
+        node-version: [22.x] # On passe à 22.x pour éviter l'avertissement de Node 20
 
     steps:
     - uses: actions/checkout@v4
@@ -25,6 +25,9 @@ jobs:
         
     - name: Install dependencies
       run: npm ci
+      
+    - name: Setup CI Environment Variables
+      run: cp .env.ci .env
       
     - name: Run tests
       run: npm test
