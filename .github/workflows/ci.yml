@@ -26,34 +26,25 @@ jobs:
     - name: Install dependencies
       run: npm ci
       
-    - name: Setup Environment Variables
-      run: |
-        echo "NODE_ENV=test" >> .env
-        echo "PORT=3001" >> .env
-        echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> .env
-        echo "DATABASE_URL=${{ secrets.DATABASE_URL }}" >> .env
-        echo "CLOUDINARY_CLOUD_NAME=${{ secrets.CLOUDINARY_CLOUD_NAME }}" >> .env
-        echo "CLOUDINARY_API_KEY=${{ secrets.CLOUDINARY_API_KEY }}" >> .env
-        echo "CLOUDINARY_API_SECRET=${{ secrets.CLOUDINARY_API_SECRET }}" >> .env
-        echo "GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}" >> .env
-        echo "GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}" >> .env
-        echo "GOOGLE_CALLBACK_URL=${{ secrets.GOOGLE_CALLBACK_URL }}" >> .env
-        echo "STRIPE_SECRET_KEY=${{ secrets.STRIPE_SECRET_KEY }}" >> .env
-        echo "STRIPE_WEBHOOK_SECRET=${{ secrets.STRIPE_WEBHOOK_SECRET }}" >> .env
-        echo "PLATFORM_FEE_PERCENT=2.5" >> .env
-        echo "FIREBASE_SERVICE_ACCOUNT_BASE64=${{ secrets.FIREBASE_SERVICE_ACCOUNT_BASE64 }}" >> .env
-        echo "BREVO_API_KEY=${{ secrets.BREVO_API_KEY }}" >> .env
-        echo "EMAIL_FROM=${{ secrets.EMAIL_FROM }}" >> .env
-        echo "EMAIL_FROM_NAME=ANKUCAMP" >> .env
-        echo "SENTRY_ENVIRONMENT=test" >> .env
-        echo "BACKUP_RETENTION_DAYS=30" >> .env
-
-    - name: Debug Env (Afficher les clés sans les valeurs)
-      run: |
-        echo "--- Contenu des clés du .env ---"
-        cut -d= -f1 .env
-
-    - name: Run tests (Debug)
+    - name: Run tests
       run: npm test
       env:
         NODE_ENV: test
+        PORT: 3001
+        JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        CLOUDINARY_CLOUD_NAME: ${{ secrets.CLOUDINARY_CLOUD_NAME }}
+        CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
+        CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
+        GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+        GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+        GOOGLE_CALLBACK_URL: ${{ secrets.GOOGLE_CALLBACK_URL }}
+        STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+        STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+        PLATFORM_FEE_PERCENT: 2.5
+        FIREBASE_SERVICE_ACCOUNT_BASE64: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_BASE64 }}
+        BREVO_API_KEY: ${{ secrets.BREVO_API_KEY }}
+        EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+        EMAIL_FROM_NAME: ANKUCAMP
+        SENTRY_ENVIRONMENT: test
+        BACKUP_RETENTION_DAYS: 30
