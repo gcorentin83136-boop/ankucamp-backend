@@ -47,6 +47,13 @@ jobs:
         echo "EMAIL_FROM_NAME=ANKUCAMP" >> .env
         echo "SENTRY_ENVIRONMENT=test" >> .env
         echo "BACKUP_RETENTION_DAYS=30" >> .env
-      
-    - name: Run tests
+
+    - name: Debug Env (Afficher les clés sans les valeurs)
+      run: |
+        echo "--- Contenu des clés du .env ---"
+        cut -d= -f1 .env
+
+    - name: Run tests (Debug)
       run: npm test
+      env:
+        NODE_ENV: test
