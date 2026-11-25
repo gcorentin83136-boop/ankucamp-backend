@@ -21,6 +21,17 @@ import {
   skipProfileOnboarding,
 } from "./users.controller";
 
+// 🆕 Import des fonctions de blocage
+import {
+  postBlock,
+  deleteBlock,
+  postRestrict,
+  deleteRestrict,
+  getMyBlocked,
+  getMyRestricted,
+  getBlockStatus,
+} from "./blocks.controller";
+
 const router = Router();
 
 // ============================================================
@@ -32,6 +43,19 @@ router.put("/me", authMiddleware, asyncHandler(updateMe));
 router.put("/me/privacy", authMiddleware, asyncHandler(putPrivacy));
 router.post("/me/become-pro", authMiddleware, asyncHandler(becomePro));
 router.post("/me/profile/skip", authMiddleware, asyncHandler(skipProfileOnboarding));
+
+// ============================================================
+// BLOCAGES & RESTRICTIONS (DOIT ÊTRE AVANT /:id)
+// ============================================================
+
+router.get("/me/blocked", authMiddleware, asyncHandler(getMyBlocked));
+router.get("/me/restricted", authMiddleware, asyncHandler(getMyRestricted));
+
+router.post("/:id/block", authMiddleware, asyncHandler(postBlock));
+router.delete("/:id/block", authMiddleware, asyncHandler(deleteBlock));
+router.post("/:id/restrict", authMiddleware, asyncHandler(postRestrict));
+router.delete("/:id/restrict", authMiddleware, asyncHandler(deleteRestrict));
+router.get("/:id/block-status", authMiddleware, asyncHandler(getBlockStatus));
 
 // ============================================================
 // ADMIN

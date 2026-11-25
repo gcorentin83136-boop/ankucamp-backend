@@ -206,7 +206,7 @@ describe("Blocks — Blocage / Restriction utilisateurs", () => {
       const res = await request(app)
         .delete(`/users/${userBId}/block`)
         .set(authHeader(tokenA));
-      expect(res.status).toBe(404); // L'API doit renvoyer 404 si pas de blocage existant
+      expect(res.status).toBe(404); 
     });
   });
 
@@ -374,12 +374,16 @@ describe("Blocks — Blocage / Restriction utilisateurs", () => {
         .values({ author_id: userBId, content: "Post B", visibility: "public" })
         .returning();
 
-      await request(app).post(`/users/${userBId}/block`).set(authHeader(tokenA));
+      const blockRes = await request(app).post(`/users/${userBId}/block`).set(authHeader(tokenA));
+      console.log("DEBUG BLOCK STATUS:", blockRes.status, blockRes.body);
 
       const res = await request(app)
         .post(`/posts/${post.id}/comments`)
         .set(authHeader(tokenA))
         .send({ content: "Hello" });
+      
+      console.log("DEBUG COMMENT STATUS:", res.status, res.body);
+      
       expect(res.status).toBe(403);
     });
   });
