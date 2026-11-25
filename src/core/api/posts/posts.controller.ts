@@ -111,7 +111,9 @@ export async function comments(req: AuthRequest, res: Response) {
   const postId = parseId(req.params.id);
   const parsed = listPostsQuerySchema.safeParse(req.query);
   if (!parsed.success) throw new AppError("Paramètres invalides", 400, parsed.error.flatten().fieldErrors);
-  const list = await getComments(postId, parsed.data);
+  
+  // 🆕 On passe req.user?.id pour filtrer les commentaires des users bloqués
+  const list = await getComments(postId, parsed.data, req.user?.id);
   return res.json({ success: true, count: list.length, comments: list });
 }
 

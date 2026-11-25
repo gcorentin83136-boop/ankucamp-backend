@@ -250,6 +250,8 @@ export async function getLikes(postId: number, query: ListPostsQuery) {
 export async function addComment(postId: number, authorId: number, input: CreateCommentInput) {
   const [post] = await db.select().from(posts).where(eq(posts.id, postId)).limit(1);
   if (!post) throw new AppError("Post introuvable", 404);
+  
+  // 🆕 AJOUT DE LA VERIFICATION ICI
   await assertCanInteract(authorId, post.author_id, "commenter ce post");
 
   if (input.parent_comment_id) {
@@ -279,6 +281,7 @@ export async function addComment(postId: number, authorId: number, input: Create
 
 export async function getComments(postId: number, query: ListPostsQuery, viewerId?: number) {
   const { limit, offset } = query;
+  // 🆕 Correction : viewerId est maintenant bien pris en compte
   const hiddenIds = viewerId ? await getHiddenUserIds(viewerId) : [];
 
   const all = await db.select({
