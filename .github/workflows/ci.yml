@@ -1,6 +1,10 @@
 ﻿name: CI Backend
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [ "main", "principal" ]
+  pull_request:
+    branches: [ "main", "principal" ]
 
 jobs:
   build-and-test:
@@ -9,61 +13,58 @@ jobs:
     services:
       postgres:
         image: postgres:16
-
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: ankucamp_test
-
         ports:
           - 5432:5432
-
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
 
+    strategy:
+      matrix:
+        node-version: [22.x]
+
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22.x
-          cache: npm
-
-      - run: npm ci
-
-      - name: Run tests
-        run: npm test
-        env:
-          NODE_ENV: test
-          PORT: 3001
-
-          JWT_SECRET: ${{ secrets.JWT_SECRET }}
-
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ankucamp_test
-          DATABASE_URL_TEST: postgresql://postgres:postgres@localhost:5432/ankucamp_test
-
-          CLOUDINARY_CLOUD_NAME: ${{ secrets.CLOUDINARY_CLOUD_NAME }}
-          CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
-          CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
-
-          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
-          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
-          GOOGLE_CALLBACK_URL: ${{ secrets.GOOGLE_CALLBACK_URL }}
-
-          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
-          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
-
-          PLATFORM_FEE_PERCENT: 2.5
-
-          FIREBASE_SERVICE_ACCOUNT_BASE64: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_BASE64 }}
-
-          BREVO_API_KEY: ${{ secrets.BREVO_API_KEY }}
-          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
-          EMAIL_FROM_NAME: ANKUCAMP
-
-          SENTRY_ENVIRONMENT: test
-
-          BACKUP_RETENTION_DAYS: 30
+    - uses: actions/checkout@v4
+    
+    - name: Use Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Apply Database Migrations
+      run: npm run db:migrate
+      env:
+        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ankucamp_test
+        
+    - name: Run tests
+      run: npm test
+      env:
+        NODE_ENV: test
+        PORT: 3001
+        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ankucamp_test
+        JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        CLOUDINARY_CLOUD_NAME: ${{ secrets.CLOUDINARY_CLOUD_NAME }}
+        CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
+        CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
+        GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+        GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+        GOOGLE_CALLBACK_URL: ${{ secrets.GOOGLE_CALLBACK_URL }}
+        STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+        STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+        PLATFORM_FEE_PERCENT: 2.5
+        FIREBASE_SERVICE_ACCOUNT_BASE64: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_BASE64 }}
+        BREVO_API_KEY: ${{ secrets.BREVO_API_KEY }}
+        EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+        EMAIL_FROM_NAME: ANKUCAMP
+        SENTRY_ENVIRONMENT: test
+        BACKUP_RETENTION_DAYS: 30
