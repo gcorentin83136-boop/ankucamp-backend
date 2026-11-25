@@ -206,7 +206,7 @@ describe("Blocks — Blocage / Restriction utilisateurs", () => {
       const res = await request(app)
         .delete(`/users/${userBId}/block`)
         .set(authHeader(tokenA));
-      expect(res.status).toBe(404);
+      expect(res.status).toBe(404); // L'API doit renvoyer 404 si pas de blocage existant
     });
   });
 
