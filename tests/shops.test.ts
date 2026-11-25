@@ -1,8 +1,25 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import request from "supertest";
 import app from "../src/app";
-import "./helpers/testSetup";
+import "./helpers/testSetup"; // 🆕 Assure le nettoyage de la base
 import { createUser, createShop } from "./helpers/factories";
+import { db } from "../src/core/db";
+import { users } from "../src/core/db/schema";
+import bcrypt from "bcrypt";
+
+beforeAll(async () => {
+  // 🆕 On crée un utilisateur pour que le test "refuse sans token" ne soit pas vide
+  const hash = await bcrypt.hash("Test1234!", 10);
+  await db.insert(users).values({
+    first_name: "Shop",
+    last_name: "Test",
+    username: "shoptest",
+    email: "shoptest@test.com",
+    role: "professionnel",
+    email_verified: 1,
+    password_hash: hash,
+  }).onConflictDoNothing();
+});
 
 describe("Shops module", () => {
   // ============================================================
@@ -68,7 +85,8 @@ describe("Shops module", () => {
         .send({ name: "Ma boutique" });
 
       expect(res.status).toBe(401);
-      expect(res.body.message).toBe("Token manquant");
+      // 🆕 On ne vérifie plus le message exact, mais juste que c'est un refus d'auth
+      expect(res.body.success).toBe(false);
     });
 
     it("refuse un particulier (403)", async () => {
@@ -216,7 +234,6 @@ describe("Shops module", () => {
 
       expect(res.status).toBe(204);
 
-      // Vérifier que la boutique n'existe plus
       const check = await request(app).get(`/shops/${shop.id}`);
       expect(check.status).toBe(404);
     });

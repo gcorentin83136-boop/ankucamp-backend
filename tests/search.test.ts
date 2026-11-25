@@ -2,9 +2,26 @@
 // ANKUCAMP — Tests d'intégration du module Search
 // ============================================================
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import request from "supertest";
 import app from "../src/app";
+import { db } from "../src/core/db";
+import { users } from "../src/core/db/schema";
+import bcrypt from "bcrypt";
+
+beforeAll(async () => {
+  // On s'assure qu'il y a au moins un utilisateur pour que la recherche trouve quelque chose
+  const hash = await bcrypt.hash("Test1234!", 10);
+  await db.insert(users).values({
+    first_name: "Search",
+    last_name: "Test",
+    username: "searchtest",
+    email: "searchtest@test.com",
+    role: "particulier",
+    email_verified: 1,
+    password_hash: hash,
+  }).onConflictDoNothing();
+});
 
 // ============================================================
 // 1. GET /search/all
@@ -13,6 +30,9 @@ import app from "../src/app";
 describe("Search — GET /search/all", () => {
   it("retourne 200 avec q=a", async () => {
     const res = await request(app).get("/search/all?q=a");
+    
+    // 🆕 Si ça plante, on affiche l'erreur
+    if (res.status === 500) console.log("DEBUG SEARCH 500:", res.body);
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
