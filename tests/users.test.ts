@@ -162,7 +162,6 @@ afterAll(async () => {
   try {
     const userIds = [userAId, userBId, userCId];
 
-    // Supprime likes / commentaires des posts de test
     const myPosts = await db
       .select({ id: posts.id })
       .from(posts)
@@ -178,12 +177,6 @@ afterAll(async () => {
       await db.delete(posts).where(inArray(posts.id, postIds));
     }
 
-    // Supprime les friendships
-    const fships = await db
-      .select({ id: friendships.id })
-      .from(friendships);
-
-    // (on supprime celles qui concernent nos users)
     await db
       .delete(friendships)
       .where(inArray(friendships.requester_id, userIds));
@@ -191,11 +184,9 @@ afterAll(async () => {
       .delete(friendships)
       .where(inArray(friendships.receiver_id, userIds));
 
-    // Supprime les reviews
     await db.delete(reviews).where(inArray(reviews.author_id, userIds));
     await db.delete(reviews).where(inArray(reviews.seller_id, userIds));
 
-    // Supprime les settings + users
     await db
       .delete(userSettings)
       .where(inArray(userSettings.user_id, userIds));
@@ -310,7 +301,7 @@ describe("Users — PUT /users/me", () => {
     const res = await request(app)
       .put("/users/me")
       .set(authHeader(tokenA))
-      .send({ username: "AB" }); // trop court
+      .send({ username: "AB" });
 
     expect(res.status).toBe(400);
   });
@@ -519,7 +510,6 @@ describe("Users — GET /users/:id/friends", () => {
   });
 
   it("rejette 403 pour un profil privé consulté par un autre", async () => {
-    // userC a is_private = 1
     const res = await request(app)
       .get(`/users/${userCId}/friends`)
       .set(authHeader(tokenA));
@@ -528,7 +518,6 @@ describe("Users — GET /users/:id/friends", () => {
   });
 
   it("autorise 200 pour son propre profil privé", async () => {
-    // Login userC pour obtenir son token
     const tokenC = await login("usertest_c@test.com");
 
     const res = await request(app)
@@ -546,5 +535,34 @@ describe("Users — GET /users/:id/friends", () => {
   it("retourne 400 pour un id non numérique", async () => {
     const res = await request(app).get("/users/abc/friends");
     expect(res.status).toBe(400);
+  });
+});
+
+// ============================================================
+// 9. GET /users/search
+// ============================================================
+
+describe("Users — GET /users/search", () => {
+  it("retourne 200 et une liste d'utilisateurs", async () => {
+    const res = await request(app)
+      .get("/users/search?search=Alice")
+      .set(authHeader(tokenA));
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(Array.isArray(res.body.users)).toBe(true);
+    expect(res.body.users.some((u: any) => u.username === "usertest_a")).toBe(true);
+  });
+
+  it("filtre les utilisateurs bloqués", async () => {
+    await request(app).post(`/users/${userBId}/block`).set(authHeader(tokenA));
+
+    const res = await request(app)
+      .get("/users/search?search=Bob")
+      .set(authHeader(tokenA));
+
+    expect(res.body.users.some((u: any) => u.username === "usertest_b")).toBe(false);
+
+    await request(app).delete(`/users/${userBId}/block`).set(authHeader(tokenA));
   });
 });

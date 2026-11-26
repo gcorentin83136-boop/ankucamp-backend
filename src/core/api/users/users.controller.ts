@@ -18,6 +18,7 @@ import {
   listUsersQuerySchema,
 } from "./users.validation";
 import { listFriends } from "../friends/friends.service";
+import { suspendUser, unsuspendUser, anonymizeUser } from "./users.service";
 
 // ============================================================
 // MES INFOS
@@ -90,7 +91,7 @@ export async function putPrivacy(req: AuthRequest, res: Response) {
 // LECTURE PUBLIQUE
 // ============================================================
 
-export async function getAll(req: Request, res: Response) {
+export async function getAll(req: AuthRequest, res: Response) {
   const parsed = listUsersQuerySchema.safeParse(req.query);
   if (!parsed.success) {
     throw new AppError(
@@ -101,10 +102,11 @@ export async function getAll(req: Request, res: Response) {
   }
 
   const { limit, offset, search } = parsed.data;
+  const viewerId = req.user?.id; // 🆕 Récupérer l'ID du viewer pour filtrer
 
   const list =
     search && search.trim() !== ""
-      ? await searchUsers(parsed.data)
+      ? await searchUsers(parsed.data, viewerId) // 🆕 Passer le viewerId
       : await getAllUsers(limit, offset);
 
   return res.json({ success: true, count: list.length, users: list });
@@ -125,9 +127,6 @@ export async function getOne(req: AuthRequest, res: Response) {
   return res.json({ success: true, user });
 }
 
-/**
- * Récupère un user par username (profil public).
- */
 export async function getByUsername(req: AuthRequest, res: Response) {
   const username = req.params.username;
   if (!username) {
@@ -143,9 +142,6 @@ export async function getByUsername(req: AuthRequest, res: Response) {
   return res.json({ success: true, user });
 }
 
-/**
- * Stats publiques d'un profil.
- */
 export async function getStats(req: Request, res: Response) {
   const id = Number(req.params.id);
   if (isNaN(id)) {
@@ -162,9 +158,6 @@ export async function getStats(req: Request, res: Response) {
   return res.json({ success: true, stats });
 }
 
-/**
- * Liste des amis d'un user (public si profil public).
- */
 export async function getFriends(req: AuthRequest, res: Response) {
   const id = Number(req.params.id);
   if (isNaN(id)) {
@@ -176,7 +169,6 @@ export async function getFriends(req: AuthRequest, res: Response) {
     throw new AppError("Utilisateur introuvable", 404);
   }
 
-  // Si profil privé → seul l'user lui-même peut voir ses amis
   if (user.is_private === 1) {
     if (!req.user || req.user.id !== id) {
       throw new AppError("Ce profil est privé", 403);
@@ -190,14 +182,11 @@ export async function getFriends(req: AuthRequest, res: Response) {
 
 // ============================================================
 // POST /users/me/become-pro
-// Convertit un particulier en professionnel + crée une demande KYC
-// Retourne un NOUVEAU JWT avec le rôle "professionnel"
 // ============================================================
 
 export async function becomePro(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifié", 401);
 
-  // Imports dynamiques pour éviter les cycles
   const { createKycSchema } = await import("../kyc/kyc.validation.js");
   const { becomeProAndCreateKyc } = await import("../kyc/kyc.service.js");
   const { signToken } = await import("../../security/jwt.js");
@@ -213,14 +202,12 @@ export async function becomePro(req: AuthRequest, res: Response) {
 
   const result = await becomeProAndCreateKyc(req.user.id, parsed.data);
 
-  // 🔑 Générer un nouveau JWT avec le rôle "professionnel"
   const newToken = signToken({
     id: req.user.id,
     email: req.user.email,
     role: "professionnel",
   });
 
-  // ✅ Créer la session BDD pour le nouveau token
   try {
     await createSession(req.user.id, newToken, req);
   } catch (err) {
@@ -235,11 +222,10 @@ export async function becomePro(req: AuthRequest, res: Response) {
     newRole: "professionnel",
   });
 }
+
 // ============================================================
 // ADMIN — SUSPENSION / SUPPRESSION
 // ============================================================
-
-import { suspendUser, unsuspendUser, anonymizeUser } from "./users.service";
 
 export async function adminSuspend(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifié", 401);
@@ -293,10 +279,6 @@ export async function adminDeleteUser(req: AuthRequest, res: Response) {
 // ONBOARDING — Complétion de profil
 // ============================================================
 
-/**
- * POST /users/me/profile/skip
- * Marque le profil comme complété (skip de la modale d'onboarding).
- */
 export async function skipProfileOnboarding(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError("Non authentifié", 401);
 

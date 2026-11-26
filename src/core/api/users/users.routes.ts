@@ -45,6 +45,13 @@ router.post("/me/become-pro", authMiddleware, asyncHandler(becomePro));
 router.post("/me/profile/skip", authMiddleware, asyncHandler(skipProfileOnboarding));
 
 // ============================================================
+// RECHERCHE (DOIT ÊTRE AVANT /:id)
+// ============================================================
+
+// 🆕 Route dédiée pour la recherche (utilisée par le frontend pour les tags)
+router.get("/search", authMiddleware, asyncHandler(getAll)); 
+
+// ============================================================
 // BLOCAGES & RESTRICTIONS (DOIT ÊTRE AVANT /:id)
 // ============================================================
 

@@ -1,6 +1,6 @@
-import { eq, and, or, ilike, desc, sql } from "drizzle-orm";
+import { eq, and, or, ilike, desc, sql, notInArray } from "drizzle-orm";
 import { db } from "../../db";
-import { users, posts, friendships, reviews } from "../../db/schema";
+import { users, posts, friendships, reviews, userSessions } from "../../db/schema";
 import { AppError } from "../../errors/AppError";
 import { getHiddenUserIds } from "./blocks.service";
 import {
@@ -40,7 +40,7 @@ const publicColumns = {
   role: users.role,
   email_verified: users.email_verified,
   verification_status: users.verification_status,
-    stripe_account_status: users.stripe_account_status,
+  stripe_account_status: users.stripe_account_status,
   suspended_until: users.suspended_until,
   suspension_reason: users.suspension_reason,
   created_at: users.created_at,
@@ -59,7 +59,6 @@ export async function getUserById(id: number, viewerId?: number) {
 
   if (!user) return null;
 
-  // 🚫 Bloquer l'accès si viewer a bloqué target OU inversement
   if (viewerId && viewerId !== id) {
     const hidden = await getHiddenUserIds(viewerId);
     if (hidden.includes(id)) {
@@ -79,7 +78,6 @@ export async function getUserByUsername(username: string, viewerId?: number) {
 
   if (!user) return null;
 
-  // 🚫 Bloquer l'accès si viewer a bloqué target OU inversement
   if (viewerId && viewerId !== user.id) {
     const hidden = await getHiddenUserIds(viewerId);
     if (hidden.includes(user.id)) {
@@ -90,9 +88,6 @@ export async function getUserByUsername(username: string, viewerId?: number) {
   return user;
 }
 
-/**
- * Liste paginée des users.
- */
 export async function getAllUsers(limit = 50, offset = 0) {
   return db
     .select(publicColumns)
@@ -104,42 +99,49 @@ export async function getAllUsers(limit = 50, offset = 0) {
 
 /**
  * Recherche des utilisateurs par nom/prénom/username.
+ * 🆕 Exclut les utilisateurs bloqués si un viewerId est fourni.
  */
-export async function searchUsers(query: ListUsersQuery) {
+export async function searchUsers(query: ListUsersQuery, viewerId?: number) {
   const { limit, offset, search } = query;
 
-  if (!search || search.trim() === "") {
-    return db
-      .select(publicColumns)
-      .from(users)
-      .orderBy(desc(users.created_at))
-      .limit(limit)
-      .offset(offset);
+  let hiddenIds: number[] = [];
+  if (viewerId) {
+    hiddenIds = await getHiddenUserIds(viewerId);
   }
 
-  const pattern = `%${search}%`;
+  let searchCondition = undefined;
+  if (search && search.trim() !== "") {
+    const pattern = `%${search}%`;
+    searchCondition = or(
+      ilike(users.first_name, pattern),
+      ilike(users.last_name, pattern),
+      ilike(users.username, pattern)
+    );
+  }
+
+  let whereCondition = searchCondition;
+  if (hiddenIds.length > 0) {
+    if (whereCondition) {
+      whereCondition = and(whereCondition, notInArray(users.id, hiddenIds));
+    } else {
+      whereCondition = notInArray(users.id, hiddenIds);
+    }
+  }
 
   return db
     .select(publicColumns)
     .from(users)
-    .where(
-      or(
-        ilike(users.first_name, pattern),
-        ilike(users.last_name, pattern),
-        ilike(users.username, pattern)
-      )
-    )
+    .where(whereCondition) // Si undefined, renvoie tout (cas où search est vide et pas de hiddenIds)
     .orderBy(desc(users.created_at))
     .limit(limit)
     .offset(offset);
 }
 
 // ============================================================
-// MISE Ã€ JOUR
+// MISE À JOUR
 // ============================================================
 
 export async function updateUser(id: number, data: UpdateProfileInput) {
-  // Nettoyage : on enlève les undefined et on gère le website vide
   const cleanData: any = {};
   for (const [key, value] of Object.entries(data)) {
     if (value === undefined) continue;
@@ -155,35 +157,30 @@ export async function updateUser(id: number, data: UpdateProfileInput) {
     throw new AppError("Aucune donnée à mettre à jour", 400);
   }
 
-    // 🎯 Marque automatiquement le profil comme complété si avatar OU bio présents
-    const [currentUser] = await db
-      .select({
-        avatar_url: users.avatar_url,
-        bio: users.bio,
-        profile_completed: users.profile_completed,
-      })
-      .from(users)
-      .where(eq(users.id, id))
-      .limit(1);
+  const [currentUser] = await db
+    .select({
+      avatar_url: users.avatar_url,
+      bio: users.bio,
+      profile_completed: users.profile_completed,
+    })
+    .from(users)
+    .where(eq(users.id, id))
+    .limit(1);
 
-    if (currentUser && !currentUser.profile_completed) {
-      const futureAvatar =
-        cleanData.avatar_url !== undefined
-          ? cleanData.avatar_url
-          : currentUser.avatar_url;
-      const futureBio =
-        cleanData.bio !== undefined ? cleanData.bio : currentUser.bio;
-      const hasAvatar =
-        !!futureAvatar && String(futureAvatar).trim().length > 0;
-      const hasBio =
-        !!futureBio && String(futureBio).trim().length > 0;
-      if (hasAvatar || hasBio) {
-        cleanData.profile_completed = 1;
-      }
+  if (currentUser && !currentUser.profile_completed) {
+    const futureAvatar =
+      cleanData.avatar_url !== undefined
+        ? cleanData.avatar_url
+        : currentUser.avatar_url;
+    const futureBio =
+      cleanData.bio !== undefined ? cleanData.bio : currentUser.bio;
+    const hasAvatar = !!futureAvatar && String(futureAvatar).trim().length > 0;
+    const hasBio = !!futureBio && String(futureBio).trim().length > 0;
+    if (hasAvatar || hasBio) {
+      cleanData.profile_completed = 1;
     }
+  }
 
-
-  // Vérif unicité email si changé
   if (cleanData.email) {
     const existing = await db
       .select({ id: users.id })
@@ -196,7 +193,6 @@ export async function updateUser(id: number, data: UpdateProfileInput) {
     }
   }
 
-  // Vérif unicité username si changé
   if (cleanData.username) {
     const existing = await db
       .select({ id: users.id })
@@ -218,9 +214,6 @@ export async function updateUser(id: number, data: UpdateProfileInput) {
   return updated ?? null;
 }
 
-/**
- * Toggle is_private.
- */
 export async function updatePrivacy(id: number, isPrivate: boolean) {
   const [updated] = await db
     .update(users)
@@ -239,17 +232,12 @@ export async function updatePrivacy(id: number, isPrivate: boolean) {
 // STATS PROFIL
 // ============================================================
 
-/**
- * Stats publiques d'un profil : nb de posts, amis, avis reçus, note moyenne.
- */
 export async function getUserStats(userId: number) {
-  // Nombre de posts
   const [postsCount] = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(posts)
     .where(eq(posts.author_id, userId));
 
-  // Nombre d'amis acceptés
   const [friendsCount] = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(friendships)
@@ -263,13 +251,11 @@ export async function getUserStats(userId: number) {
       )
     );
 
-  // Nombre d'avis reçus (en tant que vendeur)
   const [reviewsCount] = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(reviews)
     .where(eq(reviews.seller_id, userId));
 
-  // Note moyenne (en tant que vendeur)
   const [avgRating] = await db
     .select({
       avg: sql<number>`coalesce(avg(${reviews.rating}), 0)`,
@@ -289,11 +275,6 @@ export async function getUserStats(userId: number) {
 // ADMIN — SUSPENSION / SUPPRESSION
 // ============================================================
 
-import { userSessions } from "../../db/schema";
-
-/**
- * Suspend un compte pour N jours (bloque le login uniquement).
- */
 export async function suspendUser(
   userId: number,
   days: number,
@@ -324,17 +305,15 @@ export async function suspendUser(
     })
     .where(eq(users.id, userId));
 
-  // Révocation immédiate des sessions (l'user est déco tout de suite)
   await db.delete(userSessions).where(eq(userSessions.user_id, userId));
 
   console.log(
     `🚫 User #${userId} suspendu jusqu'au ${suspendedUntil.toISOString()} (${days}j)`
   );
 
-    notifyUserSuspended(userId, days, reason || "").catch((err) =>
-      console.error("❌ Erreur notif suspendu:", err)
-    );
-
+  notifyUserSuspended(userId, days, reason || "").catch((err) =>
+    console.error("❌ Erreur notif suspendu:", err)
+  );
 
   return {
     success: true,
@@ -343,9 +322,6 @@ export async function suspendUser(
   };
 }
 
-/**
- * Lève la suspension d'un compte.
- */
 export async function unsuspendUser(userId: number) {
   const [user] = await db
     .select({ id: users.id })
@@ -362,18 +338,13 @@ export async function unsuspendUser(userId: number) {
 
   console.log(`✅ User #${userId} désuspendu`);
 
-  
-    notifyUserUnsuspended(userId).catch((err) =>
-      console.error("❌ Erreur notif désuspendu:", err)
-    );
+  notifyUserUnsuspended(userId).catch((err) =>
+    console.error("❌ Erreur notif désuspendu:", err)
+  );
 
-    return { success: true };
+  return { success: true };
 }
 
-/**
- * Anonymise un compte (suppression définitive cohérente avec le scheduler RGPD).
- * Les données liées (posts, orders, avis) restent en place mais rattachées à un compte anonyme.
- */
 export async function anonymizeUser(userId: number) {
   const [user] = await db
     .select({ id: users.id, role: users.role })
@@ -414,7 +385,6 @@ export async function anonymizeUser(userId: number) {
     })
     .where(eq(users.id, userId));
 
-  // Révocation de toutes les sessions
   await db.delete(userSessions).where(eq(userSessions.user_id, userId));
 
   console.log(`🗑️ User #${userId} anonymisé`);
@@ -426,11 +396,6 @@ export async function anonymizeUser(userId: number) {
 // SKIP COMPLÉTION DE PROFIL
 // ============================================================
 
-/**
- * Marque le profil comme "vu" sans le compléter.
- * Utilisé quand l'user clique "Passer" sur la modale d'onboarding.
- * La popup ne reviendra plus à la prochaine connexion.
- */
 export async function skipProfileCompletion(userId: number) {
   const [updated] = await db
     .update(users)
