@@ -1,8 +1,9 @@
-import { eq, and, desc, gt, or, inArray, notInArray } from "drizzle-orm";
+import { eq, and, desc, gt, or, inArray, notInArray, sql } from "drizzle-orm";
 import { db } from "../../db";
-import { stories, users, friendships } from "../../db/schema";
+import { stories, users, friendships, storyReactions } from "../../db/schema";
 import { AppError } from "../../errors/AppError";
 import { getHiddenUserIds } from "../users/blocks.service";
+import { notifyStoryTags, notifyStoryReaction } from "../../notifications/social-notifications.helper";
 
 async function getFriendIds(userId: number): Promise<number[]> {
   const rows = await db
@@ -37,6 +38,11 @@ export async function createStory(authorId: number, input: any) {
     elements: input.elements || null,
   }).returning();
   
+  // 🆕 Déclencher la notification pour les tags
+  if (input.elements) {
+    notifyStoryTags(created.id, authorId, input.elements).catch(console.error);
+  }
+
   return enrichStory(created, authorId);
 }
 
@@ -107,6 +113,49 @@ export async function deleteStory(storyId: number, userId: number) {
 
   await db.delete(stories).where(eq(stories.id, storyId));
   return { success: true };
+}
+
+// 🆕 Réagir à une story (Toggle like)
+export async function toggleStoryReaction(storyId: number, userId: number, emoji: string = "❤️") {
+  const [story] = await db.select().from(stories).where(eq(stories.id, storyId)).limit(1);
+  if (!story) throw new AppError("Story introuvable", 404);
+
+  const [existing] = await db
+    .select()
+    .from(storyReactions)
+    .where(and(eq(storyReactions.story_id, storyId), eq(storyReactions.user_id, userId)))
+    .limit(1);
+
+  if (existing) {
+    await db.delete(storyReactions).where(eq(storyReactions.id, existing.id));
+    return { reacted: false, emoji: null };
+  } else {
+    await db.insert(storyReactions).values({
+      story_id: storyId,
+      user_id: userId,
+      emoji: emoji,
+    });
+
+    // 🆕 Notifier le créateur
+    notifyStoryReaction(storyId, userId, story.author_id, emoji).catch(console.error);
+
+    return { reacted: true, emoji };
+  }
+}
+
+// 🆕 Récupérer les réactions d'une story
+export async function getStoryReactions(storyId: number) {
+  return db
+    .select({
+      id: storyReactions.id,
+      emoji: storyReactions.emoji,
+      user_id: storyReactions.user_id,
+      username: users.username,
+      avatar_url: users.avatar_url,
+    })
+    .from(storyReactions)
+    .innerJoin(users, eq(users.id, storyReactions.user_id))
+    .where(eq(storyReactions.story_id, storyId));
 }
 
 async function enrichStory(story: any, viewerId?: number) {

@@ -76,7 +76,6 @@ app.use(pinoHttp({
 app.use("/payments/webhook", raw({ type: "application/json" }));
 app.use(express.json({ limit: "1mb" }));
 
-// 🆕 Dossier public pour les vidéos locales
 app.use('/uploads', express.static(path.join(process.cwd(), 'public', 'uploads')));
 
 app.use(sentryUserMiddleware);
@@ -139,7 +138,6 @@ app.use((_req, res) => {
   res.status(404).json({ success: false, message: "Route non trouvée" });
 });
 
-// 🆕 GESTION DES ERREURS
 app.use((err: any, req: any, res: any, next: any) => {
   if (err instanceof multer.MulterError) {
     return res.status(400).json({ success: false, message: err.message });

@@ -1,7 +1,14 @@
 import { Response } from "express";
 import { AuthRequest } from "../../middlewares/auth.middleware";
 import { AppError } from "../../errors/AppError";
-import { createStory, getStoriesFeed, updateVisibility, deleteStory } from "./stories.service";
+import { 
+  createStory, 
+  getStoriesFeed, 
+  updateVisibility, 
+  deleteStory,
+  toggleStoryReaction,
+  getStoryReactions
+} from "./stories.service";
 
 function parseId(raw: string | string[] | undefined): number {
   const value = Array.isArray(raw) ? raw[0] : raw;
@@ -35,4 +42,20 @@ export async function remove(req: AuthRequest, res: Response) {
   const storyId = parseId(req.params.id);
   await deleteStory(storyId, req.user.id);
   return res.status(204).send();
+}
+
+// 🆕 Réagir à une story
+export async function react(req: AuthRequest, res: Response) {
+  if (!req.user) throw new AppError("Non authentifié", 401);
+  const storyId = parseId(req.params.id);
+  const { emoji } = req.body;
+  const result = await toggleStoryReaction(storyId, req.user.id, emoji || "❤️");
+  return res.json({ success: true, ...result });
+}
+
+// 🆕 Voir les réactions
+export async function getReactions(req: AuthRequest, res: Response) {
+  const storyId = parseId(req.params.id);
+  const reactions = await getStoryReactions(storyId);
+  return res.json({ success: true, count: reactions.length, reactions });
 }

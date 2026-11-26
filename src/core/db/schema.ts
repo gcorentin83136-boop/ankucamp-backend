@@ -8,6 +8,7 @@ import {
   timestamp,
   decimal,
   numeric,
+  unique,
 } from "drizzle-orm/pg-core";
 
 // ========================
@@ -426,6 +427,17 @@ export const stories = pgTable("stories", {
   elements: text("elements"),
   created_at: timestamp("created_at").defaultNow(),
 });
+
+// 🆕 Table pour les réactions aux stories
+export const storyReactions = pgTable("story_reactions", {
+  id: serial("id").primaryKey(),
+  story_id: integer("story_id").notNull().references(() => stories.id, { onDelete: "cascade" }),
+  user_id: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  emoji: varchar("emoji", { length: 10 }).notNull().default("❤️"),
+  created_at: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  uniqueUserStory: unique().on(table.story_id, table.user_id),
+}));
 
 // ============================================================
 // PARAMÈTRES
